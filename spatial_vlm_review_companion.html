@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spatiotemporal Cognition in LLMs/VLMs — Artifact Table & Development Timeline</title>
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --ink:#1a1a1a; --ink2:#5c5c5c; --ink3:#8a8a8a;
+    --line:#e3e0da; --line2:#cfcbc3;
+    --geo:#1f6f8b; --sym:#8a5a2b; --nav:#2d6a4f; --tem:#7b2d5e; --emb:#a13b2a;
+    --geospatial:#4a5568; --interp:#5b4a8a; --found:#7a7a6a;
+    --accent:#1a1a1a;
+    --radius:6px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1360px;margin:0 auto;padding:36px 28px 80px}
+  header.doc{border-bottom:2px solid var(--ink);padding-bottom:18px;margin-bottom:28px}
+  header.doc .kicker{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);margin-bottom:8px}
+  h1{font-size:26px;line-height:1.25;margin:0 0 8px;font-weight:650;letter-spacing:-.01em}
+  header.doc p{margin:0;color:var(--ink2);font-size:14px;max-width:78ch}
+  h2{font-size:19px;margin:0 0 6px;font-weight:640;letter-spacing:-.01em}
+  .sec{margin-top:52px}
+  .sec > .sub{color:var(--ink2);font-size:13.5px;margin:0 0 20px;max-width:88ch}
+
+  /* ---------- controls ---------- */
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
+  .controls input[type=search]{
+    flex:1 1 240px;min-width:200px;padding:8px 11px;border:1px solid var(--line2);
+    border-radius:var(--radius);font-size:14px;background:var(--panel);color:var(--ink)
+  }
+  .controls select{
+    padding:8px 10px;border:1px solid var(--line2);border-radius:var(--radius);
+    background:var(--panel);font-size:13.5px;color:var(--ink)
+  }
+  .count{font-size:12.5px;color:var(--ink3);margin-left:auto;white-space:nowrap}
+  button.reset{
+    padding:8px 12px;border:1px solid var(--line2);background:var(--panel);
+    border-radius:var(--radius);cursor:pointer;font-size:13.5px;color:var(--ink2)
+  }
+  button.reset:hover{background:#f2f0ec}
+
+  /* ---------- table ---------- */
+  .tablewrap{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  thead th{
+    text-align:left;padding:10px 12px;background:#f5f3ef;border-bottom:1px solid var(--line2);
+    font-weight:600;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);
+    cursor:pointer;user-select:none;white-space:nowrap;position:sticky;top:0;z-index:2
+  }
+  thead th:hover{color:var(--ink)}
+  thead th .arrow{opacity:.3;font-size:9px;margin-left:3px}
+  thead th.sorted .arrow{opacity:1}
+  tbody td{padding:10px 12px;border-bottom:1px solid #efece7;vertical-align:top}
+  tbody tr:hover{background:#faf8f4}
+  tbody tr:last-child td{border-bottom:none}
+  td.ref{color:var(--ink3);font-variant-numeric:tabular-nums;font-size:12px;white-space:nowrap}
+  td.name{font-weight:600;min-width:150px}
+  td.name .authors{display:block;font-weight:400;color:var(--ink3);font-size:11.5px;margin-top:2px}
+  td.yr{font-variant-numeric:tabular-nums;color:var(--ink2);white-space:nowrap}
+  td.what{color:var(--ink2);font-size:12.5px;max-width:34ch}
+  td.link a{color:var(--geo);text-decoration:none;font-size:12.5px;white-space:nowrap}
+  td.link a:hover{text-decoration:underline}
+  td.link .noid{color:var(--ink3);font-size:11.5px}
+
+  .tag{
+    display:inline-block;padding:2px 7px;border-radius:11px;font-size:11px;font-weight:600;
+    line-height:1.5;margin:1px 3px 1px 0;white-space:nowrap;border:1px solid transparent
+  }
+  .t-Benchmark{background:#e8f0f4;color:#12556b;border-color:#cfe0e8}
+  .t-Dataset{background:#eaf2ec;color:#1f5138;border-color:#d2e4d8}
+  .t-Model{background:#f4ece3;color:#7a4718;border-color:#e8dbcb}
+  .t-Framework{background:#f0ecf6;color:#4a3a78;border-color:#e0d8ee}
+  .t-Survey{background:#f1f0ec;color:#5c5c4c;border-color:#e2e0d8}
+  .t-Theory{background:#faeef4;color:#6e2450;border-color:#efdae6}
+
+  .topic{display:inline-block;font-size:11.5px;color:var(--ink2);white-space:nowrap}
+  .topic::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:1px}
+  .p-geo::before{background:var(--geo)} .p-sym::before{background:var(--sym)}
+  .p-nav::before{background:var(--nav)} .p-tem::before{background:var(--tem)}
+  .p-emb::before{background:var(--emb)} .p-geospatial::before{background:var(--geospatial)}
+  .p-interp::before{background:var(--interp)} .p-found::before{background:var(--found)}
+
+  .legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin:14px 0 0;font-size:12px;color:var(--ink2)}
+
+  /* ---------- timeline ---------- */
+  .tl{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:0;overflow-x:auto}
+  .tlgrid{min-width:1080px;display:grid;grid-template-columns:190px repeat(5,1fr)}
+  .tlgrid > *{border-right:1px solid #efece7;border-bottom:1px solid #efece7;padding:11px 13px}
+  .tlgrid > *:nth-child(6n){border-right:none}
+  .tl-head{background:#f5f3ef;font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;font-weight:650;color:var(--ink2);position:sticky;top:0}
+  .tl-head.era{color:var(--ink)}
+  .tl-head.era small{display:block;font-size:10.5px;letter-spacing:0;text-transform:none;font-weight:400;color:var(--ink3);margin-top:3px}
+  .tl-lane{background:#fcfbf9;font-size:12.5px;font-weight:650;line-height:1.4}
+  .tl-lane em{display:block;font-weight:400;font-style:normal;color:var(--ink3);font-size:11px;margin-top:4px}
+  .tl-lane.l-geo{border-left:4px solid var(--geo)}
+  .tl-lane.l-nav{border-left:4px solid var(--nav)}
+  .tl-lane.l-sym{border-left:4px solid var(--sym)}
+  .tl-lane.l-tem{border-left:4px solid var(--tem)}
+  .tl-lane.l-emb{border-left:4px solid var(--emb)}
+  .tl-lane.l-geospatial{border-left:4px solid var(--geospatial)}
+  .tl-lane.l-interp{border-left:4px solid var(--interp)}
+  .tl-lane.l-found{border-left:4px solid var(--found)}
+  .cell{font-size:12px;color:var(--ink2)}
+  .cell .chip{
+    display:block;background:#f6f4f0;border:1px solid var(--line);border-radius:5px;
+    padding:5px 7px;margin-bottom:5px;color:var(--ink);font-weight:600;font-size:11.5px;line-height:1.35
+  }
+  .cell .chip span{display:block;font-weight:400;color:var(--ink3);font-size:10.5px;margin-top:2px}
+  .cell.dim{background:#fdfdfc}
+  .arc{grid-column:2 / -1;background:#fff;border-right:none;padding:0}
+
+  .narr{margin-top:24px;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+  .narr .card{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--line2);border-radius:6px;padding:13px 15px}
+  .narr .card h4{margin:0 0 5px;font-size:13px;font-weight:650}
+  .narr .card .era{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);margin-bottom:5px}
+  .narr .card p{margin:0;font-size:12.5px;color:var(--ink2);line-height:1.5}
+  .narr .card:nth-child(1){border-left-color:var(--found)}
+  .narr .card:nth-child(2){border-left-color:var(--geo)}
+  .narr .card:nth-child(3){border-left-color:var(--nav)}
+  .narr .card:nth-child(4){border-left-color:var(--tem)}
+  .narr .card:nth-child(5){border-left-color:var(--interp)}
+
+  footer.doc{margin-top:56px;padding-top:18px;border-top:1px solid var(--line2);font-size:12px;color:var(--ink3)}
+  @media print{
+    body{background:#fff} .controls{display:none} .wrap{max-width:none;padding:0}
+    .tl{overflow:visible} thead th{position:static}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <div class="kicker">Companion tables · Mini literature review</div>
+  <h1>Can large language models reason about spatiotemporal tasks?<br>Cognitive perspectives on benchmarking</h1>
+  <p>Structured index of all 64 cited works — benchmarks, datasets, models, frameworks, surveys, and cognitive-science
+  foundations — classified by contribution type and by the spatial capability topic each addresses, using the paper's own
+  Section&nbsp;2 ontology (geometric reasoning · symbol manipulation · navigation · temporality). Below the table, a
+  swimlane timeline traces the broad arcs of development.</p>
+</header>
+
+<!-- ============ TABLE ============ -->
+<section class="sec">
+  <h2>1 · Artifact index</h2>
+  <p class="sub">Click any column header to sort. Reference numbers match the paper's bibliography. Several works
+  contribute in more than one way (e.g. a model released alongside its own dataset and benchmark) and carry multiple
+  type tags; the first tag is the primary contribution.</p>
+
+  <div class="controls">
+    <input type="search" id="q" placeholder="Search name, author, topic, contribution…" aria-label="Search">
+    <select id="fType" aria-label="Filter by contribution type"><option value="">All contribution types</option></select>
+    <select id="fTopic" aria-label="Filter by topic"><option value="">All capability topics</option></select>
+    <select id="fYear" aria-label="Filter by year"><option value="">All years</option></select>
+    <button class="reset" id="reset">Reset</button>
+    <span class="count" id="count"></span>
+  </div>
+
+  <div class="tablewrap">
+    <table id="tbl">
+      <thead><tr>
+        <th data-k="ref">#<span class="arrow">▼</span></th>
+        <th data-k="name">Benchmark / model / work<span class="arrow">▼</span></th>
+        <th data-k="year">Year<span class="arrow">▼</span></th>
+        <th data-k="typeStr">Contribution type<span class="arrow">▼</span></th>
+        <th data-k="topicStr">Spatial capability topic<span class="arrow">▼</span></th>
+        <th data-k="what">Contribution in one line<span class="arrow">▼</span></th>
+        <th data-k="linkLabel">Citation<span class="arrow">▼</span></th>
+      </tr></thead>
+      <tbody id="body"></tbody>
+    </table>
+  </div>
+
+  <div class="legend" id="legend"></div>
+</section>
+
+<!-- ============ TIMELINE ============ -->
+<section class="sec">
+  <h2>2 · Broad arcs of development</h2>
+  <p class="sub">Each row is a research arc; each column an era. The shape of the field is visible in the fill pattern:
+  spatial-relation work saturates early and then thins out as attention migrates rightward and downward into
+  temporality, embodiment, and interpretability.</p>
+
+  <div class="tl">
+    <div class="tlgrid">
+      <div class="tl-head">Arc</div>
+      <div class="tl-head era">Pre-2023 <small>Cognitive foundations</small></div>
+      <div class="tl-head era">2023 <small>Diagnosis</small></div>
+      <div class="tl-head era">2024 <small>Filling the gaps</small></div>
+      <div class="tl-head era">2025 <small>Complexity &amp; scale</small></div>
+      <div class="tl-head era">2026 <small>Consolidation</small></div>
+
+      <!-- Foundations -->
+      <div class="tl-lane l-found">Cognitive-science scaffolding<em>What is there to measure?</em></div>
+      <div class="cell">
+        <div class="chip">Marr tri-level <span>1982 · [35]</span></div>
+        <div class="chip">Cleveland &amp; McGill <span>1984 · [13]</span></div>
+        <div class="chip">Newcombe's 3 kinds <span>2018 · [41]</span></div>
+        <div class="chip">Gillner &amp; Mallot; Epstein <span>2008–17 · [20,17]</span></div>
+      </div>
+      <div class="cell dim">—</div>
+      <div class="cell">
+        <div class="chip">Peng et al. — transformer limits <span>[42] complexity ceiling on composition</span></div>
+      </div>
+      <div class="cell dim">—</div>
+      <div class="cell dim">—</div>
+
+      <!-- Geometric / spatial relations -->
+      <div class="tl-lane l-geo">Spatial relations<em>Can VLMs read "above," "behind"?</em></div>
+      <div class="cell">
+        <div class="chip">Renzhong; McNamara; Clementini <span>relation taxonomies [46,36,12]</span></div>
+      </div>
+      <div class="cell">
+        <div class="chip">What'sUp / COCO-Spatial / GQA-Spatial <span>[27] 56% VLM vs 99% human</span></div>
+      </div>
+      <div class="cell">
+        <div class="chip">SpatialVLM <span>[6] VQA data synthesis pipeline</span></div>
+        <div class="chip">ZeroVLM <span>[38] 3D reconstruction for views</span></div>
+        <div class="chip">EmbSpatial-Bench/SFT <span>[16] +34% via fine-tuning</span></div>
+        <div class="chip">TopViewRS <span>[30] allocentric top-view</span></div>
+      </div>
+      <div class="cell">
+        <div class="chip">Mind the Gap <span>[49] topological · projective · metric</span></div>
+        <div class="chip">SPACE <span>[45] near-chance on rotation</span></div>
+        <div class="chip">SPHERE <span>[62] compositional relations</span></div>
+      </div>
+      <div class="cell dim">—</div>
+
+      <!-- Navigation -->
+      <div class="tl-lane l-nav">Navigation &amp; cognitive maps<em>Graphs as the shared representation</em></div>
+      <div class="cell">
+        <div class="chip">Mallot &amp; Basten <span>[34] embodied route following</span></div>
+      </div>
+      <div class="cell">
+        <div class="chip">CogEval <span>[39] loops, hallucinated edges; CoT+BFS/DFS helps</span></div>
+      </div>
+      <div class="cell">
+        <div class="chip">NavGPT-2 <span>[63] SOTA VLN, keeps language ability</span></div>
+        <div class="chip">Mobility VLA <span>[10] topological graph + long-context</span></div>
+        <div class="chip">PLUGH <span>[52] paths from fiction text</span></div>
+      </div>
+      <div class="cell">
+        <div class="chip">CityGPT / CityEval <span>[18] urban spatial cognition</span></div>
+        <div class="chip">VSI-Bench <span>[59] distance estimation gaps</span></div>
+      </div>
+      <div class="cell dim">—</div>
+
+      <!-- Symbol manipulation -->
+      <div class="tl-lane l-sym">Symbol manipulation<em>Maps, charts, renderings</em></div>
+      <div class="cell dim">—</div>
+      <div class="cell dim">—</div>
+      <div class="cell dim">—</div>
+      <div class="cell">
+        <div class="chip">ChartBench <span>[33] 40–60% drop on unlabeled charts</span></div>
+        <div class="chip">MAPWise <span>[40] aerial/choropleth map queries</span></div>
+        <div class="chip">Poonam et al. <span>[43] ViT graphical perception</span></div>
+      </div>
+      <div class="cell dim">—</div>
+
+      <!-- 3D scene understanding -->
+      <div class="tl-lane l-geo">3D scene understanding<em>From 2D frames to scene graphs</em></div>
+      <div class="cell dim">—</div>
+      <div class="cell">
+        <div class="chip">InstructBLIP <span>[14] backbone architecture</span></div>
+        <div class="chip">Zero-1-to-3 <span>[31] novel-view synthesis</span></div>
+      </div>
+      <div class="cell">
+        <div class="chip">SpatialRGPT <span>[9] scene graphs + depth</span></div>
+        <div class="chip">ROOT <span>[56] indoor scene system</span></div>
+      </div>
+      <div class="cell">
+        <div class="chip">Scene-LLM <span>[19] hybrid scene/egocentric 3D</span></div>
+        <div class="chip">GPT4Scene <span>[44] video → BEV + 3D markers</span></div>
+        <div class="chip">Geometric Distillation <span>[29] inject 3D priors into 2D VLMs</span></div>
+      </div>
+      <div class="cell dim">—</div>
+
+      <!-- Temporality -->
+      <div class="tl-lane l-tem">Temporality &amp; video<em>The "temporal" finally arrives</em></div>
+      <div class="cell">
+        <div class="chip">Teki et al. <span>[51] how brains encode time</span></div>
+      </div>
+      <div class="cell dim">—</div>
+      <div class="cell dim">—</div>
+      <div class="cell">
+        <div class="chip">VideoMindPalace <span>[24] spatiotemporal semantic graph</span></div>
+        <div class="chip">Video-CoT <span>[61] 192k QA · 23k CoT</span></div>
+        <div class="chip">SPLICE <span>[2] event ordering; causal &gt; spatial</span></div>
+        <div class="chip">Huang &amp; Rao <span>[23] CoT annotation + RL</span></div>
+      </div>
+      <div class="cell">
+        <div class="chip">PLNet-12 <span>[22] physical literacy; temporal hallucination</span></div>
+        <div class="chip">Video temporal grounding survey <span>[58] named as its own field</span></div>
+        <div class="chip">Liu et al. <span>[32] sub-action ↔ motion alignment</span></div>
+      </div>
+
+      <!-- Embodiment -->
+      <div class="tl-lane l-emb">Embodiment &amp; affordance<em>Acting, not just describing</em></div>
+      <div class="cell dim">—</div>
+      <div class="cell dim">—</div>
+      <div class="cell">
+        <div class="chip">EmbSpatial-Bench <span>[16] egocentric embodied relations</span></div>
+      </div>
+      <div class="cell">
+        <div class="chip">MetaVQA <span>[55] traffic decision-making</span></div>
+        <div class="chip">RoboAfford <span>[50] pick-and-place affordances</span></div>
+      </div>
+      <div class="cell dim">—</div>
+
+      <!-- Geospatial -->
+      <div class="tl-lane l-geospatial">Geospatial application<em>Real imagery, real stakes</em></div>
+      <div class="cell">
+        <div class="chip">Carniel; Wang et al. <span>[5,57] spatial query &amp; relation reviews</span></div>
+      </div>
+      <div class="cell">
+        <div class="chip">Jiang <span>[26] DL for spatiotemporal big data</span></div>
+      </div>
+      <div class="cell dim">—</div>
+      <div class="cell">
+        <div class="chip">GEOBench-VLM <span>[15] counting, change detection</span></div>
+        <div class="chip">OmniGeo <span>[60] geospatial MLLM; forecasting</span></div>
+        <div class="chip">AVI-Math <span>[64] aerial distance &amp; trajectory</span></div>
+      </div>
+      <div class="cell dim">—</div>
+
+      <!-- Interpretability -->
+      <div class="tl-lane l-interp">Interpretability turn<em>Why does it fail, mechanistically?</em></div>
+      <div class="cell dim">—</div>
+      <div class="cell">
+        <div class="chip">Logit/Tuned Lens <span>[3] read intermediate layers</span></div>
+      </div>
+      <div class="cell">
+        <div class="chip">MLLM survey <span>[4] architecture landscape</span></div>
+        <div class="chip">LAION-5B <span>[47] the pre-training corpus at issue</span></div>
+      </div>
+      <div class="cell">
+        <div class="chip">Chen et al. <span>[7] attention goes to learned priors</span></div>
+        <div class="chip">V-SEAM · NOTICE <span>[54,21] semantic perturbation</span></div>
+        <div class="chip">Sparse autoencoders <span>[8,28] feature disentangling</span></div>
+        <div class="chip">CRUX <span>[37] counterfactual multi-hypothesis</span></div>
+        <div class="chip">ICEv2 · Vision Function Layer <span>[11,48] component roles</span></div>
+      </div>
+      <div class="cell dim">—</div>
+    </div>
+  </div>
+
+  <div class="narr">
+    <div class="card">
+      <div class="era">Arc 0 · before the models</div>
+      <h4>Cognition supplies the ontology</h4>
+      <p>Four decades of spatial cognition — Marr's levels, Newcombe's three kinds, cognitive-map research — define
+      <em>what</em> a spatial benchmark could measure. The LLM literature inherits this vocabulary without inheriting
+      its methodology.</p>
+    </div>
+    <div class="card">
+      <div class="era">Arc 1 · 2023</div>
+      <h4>Diagnosis: it's the data</h4>
+      <p>First-generation probes ask whether transformers handle spatial relations at all. They don't — 56% vs 99%
+      human. The verdict blames the pre-training corpus rather than the architecture, which sets the 2024 agenda.</p>
+    </div>
+    <div class="card">
+      <div class="era">Arc 2 · 2024</div>
+      <h4>Synthesize data, graph the world</h4>
+      <p>Two responses run in parallel: manufacture the missing supervision (SpatialVLM, ZeroVLM, EmbSpatial-SFT), and
+      restructure the model around graphs — scene graphs for objects, topological graphs for routes. Fine-tuning beats
+      chain-of-thought, but human-level gaps persist.</p>
+    </div>
+    <div class="card">
+      <div class="era">Arc 3 · 2025</div>
+      <h4>Complexity, time, and bodies</h4>
+      <p>Benchmarks stop asking "can it?" and start varying difficulty — by scale (SPACE), by composition (SPHERE), by
+      input complexity (ChartBench). Simultaneously the field goes egocentric and temporal, and spills into geospatial
+      and robotics applications where failures cost something.</p>
+    </div>
+    <div class="card">
+      <div class="era">Arc 4 · 2025–26</div>
+      <h4>Turning inward</h4>
+      <p>With performance ceilings visible, attention shifts from scores to mechanisms: attention-focus analyses,
+      counterfactual perturbation, sparse autoencoders. Video temporal grounding splits off as its own field. This is
+      the opening the review argues benchmark design should exploit.</p>
+    </div>
+  </div>
+</section>
+
+<footer class="doc">
+  Generated from the bibliography of <em>Can large language models reason about spatiotemporal tasks? Cognitive
+  perspectives on benchmarking</em> (Mendoza, 2026). Links are the DOI or arXiv identifiers given in the source
+  bibliography; entries whose bibliography record carries no persistent identifier are marked
+  <span class="noid">(title search)</span> and link to a scholarly search rather than a guessed URL.
+</footer>
+</div>
+
+<script>
+const T = {B:'Benchmark', D:'Dataset', M:'Model', F:'Framework / method', S:'Survey / review', X:'Theory (cognitive science)'};
+const P = {
+  geo:['Geometric reasoning','p-geo'], sym:['Symbol manipulation','p-sym'], nav:['Navigation','p-nav'],
+  tem:['Temporality','p-tem'], emb:['Embodiment','p-emb'], geospatial:['Geospatial application','p-geospatial'],
+  interp:['Interpretability / methods','p-interp'], found:['Foundations / architecture','p-found']
+};
+function sch(t){return 'https://scholar.google.com/scholar?q='+encodeURIComponent(t)}
+
+// ref, name, authors, year, types[], topics[], one-line contribution, link, linkLabel
+const DATA = [
+[1,'Hierarchical spatial encoding','—',1992,['X'],['geo'],'Evidence that spatial information is encoded hierarchically (JAR-on-TABLE style dependencies).','https://link.springer.com/chapter/10.1007/3-540-55966-3_16','Springer'],
+[2,'SPLICE','Ballout et al.',2025,['B'],['tem','geo'],'Human-curated video event-ordering benchmark; separates causal, temporal, spatial, contextual reasoning.',sch('Can you SPLICE it together? A Human Curated Benchmark for Probing Visual Reasoning in VLMs'),'EMNLP Findings ’25'],
+[3,'Tuned Lens (logit lens)','Belrose et al.',2025,['F'],['interp'],'Translates intermediate transformer layers into distributions over the vocabulary.','https://arxiv.org/abs/2303.08112','arXiv:2303.08112'],
+[4,'MLLM survey','Caffagni et al.',2024,['S'],['found'],'Survey of multimodal LLM architectures; source for how VLMs route visual input into an LLM.','https://doi.org/10.18653/v1/2024.findings-acl.807','ACL Findings ’24'],
+[5,'Spatial query design','Carniel',2024,['S','X'],['geo','geospatial'],'Review of spatial relationships as the basis for designing spatial queries.','https://doi.org/10.1080/10095020.2022.2163924','Geo-spatial Inf. Sci.'],
+[6,'SpatialVLM','Chen et al.',2024,['M','D','B'],['geo'],'VQA data-synthesis pipeline (depth, coordinates, masks → QA text), plus trained model and benchmark.','https://arxiv.org/abs/2401.12168','arXiv:2401.12168'],
+[7,'Attention-focus analysis','Chen et al.',2025,['F'],['interp','geo'],'Shows VLM attention defaults to learned priors; confidence-adaptive attention improves spatial scores.','https://arxiv.org/abs/2503.01773','arXiv:2503.01773'],
+[8,'CoT sparse autoencoding','Chen, Plaat & van Stein',2025,['F'],['interp'],'Mechanistic interpretability of chain-of-thought reasoning via sparse autoencoders.','https://arxiv.org/abs/2507.22928','arXiv:2507.22928'],
+[9,'SpatialRGPT','Cheng et al.',2024,['M','D','B'],['geo'],'Grounded spatial reasoning via scene graphs (support/contain/hang/attach) with depth from ground truth.','https://arxiv.org/abs/2406.01584','arXiv:2406.01584'],
+[10,'Mobility VLA','Chiang et al.',2024,['M','F'],['nav','emb'],'Long-context VLM plus topological graph lets robots execute multimodal navigation instructions.','https://arxiv.org/abs/2407.07775','arXiv:2407.07775'],
+[11,'ICEv2','Choi, Jin & Han',2025,['F'],['interp'],'Interpretability, comprehensiveness and explainability framework for vision transformers.','https://doi.org/10.1007/s11263-024-02290-6','IJCV'],
+[12,'Spatial relation framework','Clementini',2019,['X'],['geo'],'Conceptual framework for modelling spatial relations; one of the taxonomies the review consolidates.','https://doi.org/10.5755/j01.itc.48.1.22246','Inf. Tech. & Control'],
+[13,'Graphical perception','Cleveland & McGill',1984,['X'],['sym'],'Classic ranking of elementary visual encodings — the perturbation variables for chart/graph studies.','https://doi.org/10.1080/01621459.1984.10478080','JASA'],
+[14,'InstructBLIP','Dai et al.',2023,['M'],['found'],'Instruction-tuned VLM architecture; the backbone NavGPT-2 extends to multiple images.','https://proceedings.neurips.cc/paper_files/paper/2023/file/9a6a435e75419a836fe47ab6793623e6-Paper-Conference.pdf','NeurIPS ’23'],
+[15,'GEOBench-VLM','Danish et al.',2025,['B','D'],['geospatial'],'Geospatial benchmark: counting, categorization and change detection over trees, crops, landscapes.','https://arxiv.org/abs/2411.19325','arXiv:2411.19325'],
+[16,'EmbSpatial-Bench / -SFT','Du et al.',2024,['B','D'],['emb','geo'],'Egocentric embodied spatial-relation benchmark; SFT data yields +34% accuracy on MiniGPT-v2.','https://arxiv.org/abs/2406.05756','arXiv:2406.05756'],
+[17,'Cognitive map in humans','Epstein et al.',2017,['X'],['nav'],'Review of human spatial navigation; source for node/edge cognitive-map representation.','https://doi.org/10.1038/nn.4656','Nature Neurosci.'],
+[18,'CityGPT / CityEval','Feng et al.',2025,['M','B'],['nav','geospatial'],'Injects urban spatial cognition into LLMs; CityEval evaluates urban and general navigation.','https://doi.org/10.1145/3711896.3736878','KDD ’25'],
+[19,'Scene-LLM','Fu et al.',2025,['M','D'],['geo','emb'],'Editable hybrid scene-level + egocentric 3D representation for captioning, dialogue, task decomposition.','https://doi.org/10.1109/WACV61041.2025.00220','WACV ’25'],
+[20,'Task hierarchy of spatial cognition','Gillner & Mallot',2008,['X'],['nav'],'Navigation as a hierarchy of increasingly complex structures: place recognition → route → cognitive map.','https://doi.org/10.1007/978-3-540-75388-9_11','Springer'],
+[21,'What Do VLMs NOTICE','Golovanevsky et al.',2025,['F'],['interp'],'Noise-free text-image corruption pipeline for mechanistic interpretability of VLMs.','https://doi.org/10.18653/v1/2025.naacl-long.571','NAACL ’25'],
+[22,'PLNet-12','Guo et al.',2026,['B','D'],['tem','emb'],'Zero-shot physical-literacy benchmark over 12 fundamental movements; exposes temporal hallucination.',sch('PLNet-12 vision-language benchmark zero-shot physical literacy 12 fundamental movements'),'Springer LNCS'],
+[23,'CoT annotation + RL','Huang & Rao',2025,['D','F'],['geo','tem'],'CoT-annotated visual-truth data improves open-source VLM spatial reasoning via reinforcement learning.',sch('Improving spatial reasoning in vision-language models via chain-of-thought annotation and reinforcement learning'),'CISAI ’25'],
+[24,'VideoMindPalace','Huang et al.',2025,['F','B'],['tem','nav'],'Method-of-loci-inspired spatiotemporal semantic graph for long-video analysis, plus paired benchmark.',sch('Building a mind palace: Structuring environment-grounded semantic graphs for effective long video analysis with LLMs'),'CVPR ’25'],
+[25,'VL representation editing','Jiang et al.',2025,['F'],['interp'],'Interprets and edits vision-language representations to mitigate hallucination.','https://proceedings.iclr.cc/paper_files/paper/2025/hash/9f14fb9acd243c13c95d4a490d1684ce-Abstract-Conference.html','ICLR ’25'],
+[26,'DL for spatiotemporal big data','Jiang',2023,['S'],['found','geospatial'],'Vision paper on why conventional deep learning falls short on complex spatiotemporal reasoning.','https://doi.org/10.1109/BigData59044.2023.10386256','IEEE BigData ’23'],
+[27,'What\'sUp / COCO-Spatial / GQA-Spatial','Kamath, Hessel & Chang',2023,['B','D'],['geo'],'Positional-relation benchmarks; 56% VLM vs 99% human, traced to gaps in pre-training corpora.','https://arxiv.org/abs/2310.19785','arXiv:2310.19785'],
+[28,'Residual replacement model','Kim et al.',2025,['F'],['interp'],'Interprets vision transformers by replacing residual streams with interpretable surrogates.','https://arxiv.org/abs/2509.17401','arXiv:2509.17401'],
+[29,'Geometric Distillation','Lee et al.',2025,['F'],['geo'],'Fine-tunes 2D VLMs for 3D awareness by injecting depth relations, correspondences, cost volumes.',sch('3D-aware vision-language models fine-tuning with geometric distillation'),'EMNLP Findings ’25'],
+[30,'TopViewRS','Li et al.',2024,['B'],['nav','sym'],'Top-view (allocentric) spatial reasoning: localization, counting, navigation; >50% gap persists.','https://arxiv.org/abs/2406.02537','arXiv:2406.02537'],
+[31,'Zero-1-to-3','Liu et al.',2023,['M','F'],['geo'],'Zero-shot single-image novel-view synthesis; the reconstruction technique ZeroVLM builds on.','https://doi.org/10.1109/ICCV51070.2023.00853','ICCV ’23'],
+[32,'Concept-enriched alignment','Liu et al.',2026,['F'],['tem'],'Cross-modal semantic alignment linking LLM-predicted sub-actions to motion dynamics for action detection.',sch('Cross-modal semantic alignment via concept enrichment for temporal action detection'),'Springer LNCS'],
+[33,'ChartBench','Long et al.',2025,['B'],['sym'],'Chart-understanding benchmark scaled by chart complexity; 40–60% accuracy drop on unlabeled charts.',sch('ChartBench: A comprehensive evaluation benchmark for chart understanding capabilities of vision-language models'),'VRISP ’25'],
+[34,'Embodied spatial cognition','Mallot & Basten',2009,['X'],['nav','emb'],'Route following as chained motor responses to recognized places, in biological and artificial systems.','https://doi.org/10.1016/j.imavis.2008.09.001','Image & Vision Comp.'],
+[35,'Vision (tri-level hypothesis)','Marr',1982,['X'],['found','interp'],'Behavioral / algorithmic / implementation levels — the organizing frame for the review\'s Section 4.',sch('Marr Vision A Computational Investigation into the Human Representation and Processing of Visual Information'),'Book'],
+[36,'Mental representations of spatial relations','McNamara',1986,['X'],['geo'],'Early psychological account of how spatial relations are mentally represented.','https://doi.org/10.1016/0010-0285(86)90016-2','Cognitive Psych.'],
+[37,'CRUX','Meherab',2025,['F'],['interp','emb'],'Counterfactual multi-hypothesis subgoal decomposition for interpretable embodied agents (3%→5%).','https://openreview.net/forum?id=AhaYLF6f8D','OpenReview'],
+[38,'ZeroVLM','Meng, Zhou & Chen',2024,['M','D'],['geo'],'Uses 3D reconstruction to generate multi-view training data for spatial relations and localization.','https://arxiv.org/abs/2407.14133','arXiv:2407.14133'],
+[39,'CogEval','Momennejad et al.',2023,['B'],['nav'],'Text-based cognitive-map and planning benchmark; LLMs loop and hallucinate edges, CoT+BFS/DFS helps.','https://arxiv.org/abs/2309.15129','arXiv:2309.15129'],
+[40,'MAPWise','Mukhopadhyay et al.',2025,['B','D'],['sym','geospatial'],'Advanced map-query benchmark for VLMs across choropleth and aerial map reading.',sch('MAPWise: Evaluating vision-language models for advanced map queries'),'NAACL ’25'],
+[41,'Three Kinds of Spatial Cognition','Newcombe',2018,['X'],['found','geo','sym','nav'],'Partitions spatial cognition into geometric reasoning, symbol manipulation, navigation — the review\'s spine.','https://doi.org/10.1002/9781119170174.epcn315','Stevens\' Handbook'],
+[42,'Limitations of the Transformer','Peng, Narayanan & Papadimitriou',2024,['X'],['found'],'Complexity-theoretic ceiling on function composition solvable in polynomial time by transformers.','https://arxiv.org/abs/2402.08164','arXiv:2402.08164'],
+[43,'ViT graphical perception','Poonam, Vázquez & Ropinski',2025,['B'],['sym','interp'],'Evaluates vision transformers on Cleveland–McGill elementary perceptual tasks.','https://doi.org/10.1016/j.cag.2025.104458','Computers & Graphics'],
+[44,'GPT4Scene','Qi et al.',2025,['M','F'],['geo','tem'],'Egocentric video → stitched image + BEV 3D reconstruction with spatiotemporal object markers.','https://arxiv.org/abs/2501.01428','arXiv:2501.01428'],
+[45,'SPACE','Ramakrishnan & Wijmans',2025,['B'],['geo','nav'],'Small- and large-scale spatial battery; frontier models near chance on rotation and perspective taking.',sch('Does spatial cognition emerge in frontier models Ramakrishnan Wijmans'),'2025'],
+[46,'Spatial Objects and Relationships','Renzhong',1998,['X'],['geo'],'Formalizes morphology vs position relations; source of the egocentric–allocentric framing.','https://doi.org/10.1080/10095020.1998.10553282','Geo-spatial Inf. Sci.'],
+[47,'LAION-5B','Schuhmann et al.',2022,['D'],['found'],'Open image-text pre-training corpus — the dataset whose spatial-language sparsity is diagnosed in [27].',sch('LAION-5B an open large-scale dataset for training next generation image-text models'),'NeurIPS ’22'],
+[48,'Vision Function Layer','Shi, Yu & Yang',2025,['F'],['interp'],'Identifies functionally specialized layers for vision processing inside multimodal LLMs.','https://arxiv.org/abs/2509.24791','arXiv:2509.24791'],
+[49,'Mind the Gap','Stogiannidis, McDonagh & Tsaftaris',2025,['B'],['geo'],'Benchmarks topological, projective/positional and metric spatial relations; weaknesses across all three.','https://arxiv.org/abs/2503.19707','arXiv:2503.19707'],
+[50,'RoboAfford','Tang et al.',2025,['D','B'],['emb'],'Dataset and benchmark for object and spatial affordance learning in robot manipulation.','https://doi.org/10.1145/3746027.3758209','ACM MM ’25'],
+[51,'The Persistence of Memory','Teki, Gu & Meck',2017,['X'],['tem'],'How the brain encodes time in memory; grounds the claim that human time is motor/attentional, not a vector.','https://doi.org/10.1016/j.cobeha.2017.09.003','Curr. Opin. Behav. Sci.'],
+[52,'PLUGH','Tikhonov',2024,['B'],['nav','sym'],'Extracts and computes paths from fictional-story text — spatial reasoning without any pixels.','https://arxiv.org/abs/2408.04648','arXiv:2408.04648'],
+[53,'Interpretability in visual recognition','Wan et al.',2025,['S'],['interp'],'Survey establishing counterfactual perturbation as standard interpretability practice.','https://arxiv.org/abs/2507.11099','arXiv:2507.11099'],
+[54,'V-SEAM','Wang, Hu & Jiang',2025,['F'],['interp'],'Semantic editing + attention modulation for causal interpretability of VLMs (objects, attributes, relations).','https://doi.org/10.18653/v1/2025.emnlp-main.880','EMNLP ’25'],
+[55,'MetaVQA','Wang et al.',2025,['B','D'],['emb'],'Embodied scene understanding and decision-making benchmark in traffic scenarios.',sch('Embodied scene understanding for vision language models via MetaVQA'),'CVPR ’25'],
+[56,'ROOT','Wang et al.',2024,['M','F'],['geo'],'VLM-based indoor scene understanding system built on object-node / relation-edge scene graphs.','https://arxiv.org/abs/2411.15714','arXiv:2411.15714'],
+[57,'Spatial relationship recognition review','Wang et al.',2023,['S'],['geo'],'Review of heterogeneous representations for spatial relationship recognition.','https://doi.org/10.1016/j.neucom.2023.02.053','Neurocomputing'],
+[58,'Video temporal grounding survey','Wu et al.',2026,['S'],['tem'],'Defines video temporal grounding with MLLMs as a field distinct from conventional fine-tuning.',sch('A survey on video temporal grounding with multimodal large language model'),'IEEE TPAMI'],
+[59,'VSI-Bench','Yang et al.',2025,['B'],['geo','nav'],'Tests how MLLMs see, remember and recall spaces; CoT can worsen distance estimation vs baseline.','https://arxiv.org/abs/2412.14171','arXiv:2412.14171'],
+[60,'OmniGeo','Yuan et al.',2025,['M','B'],['geospatial'],'Geospatial MLLM aligning text-encoded spatial vectors with geographic entities; dementia-death forecasting.','https://arxiv.org/abs/2503.16326','arXiv:2503.16326'],
+[61,'Video-CoT','Zhang et al.',2025,['D','B'],['tem'],'192k QA pairs and 23k chain-of-thought annotations for spatiotemporal video understanding.',sch('Video-CoT: A comprehensive dataset for spatiotemporal understanding of videos based on chain-of-thought'),'ACM MM ’25'],
+[62,'SPHERE','Zhang et al.',2025,['B'],['geo'],'Hierarchical evaluation composing spatial relations with logical reasoning; fails on real-world composites.',sch('SPHERE: Unveiling spatial blind spots in vision-language models through hierarchical evaluation'),'ACL ’25'],
+[63,'NavGPT-2','Zhou et al.',2025,['M'],['nav'],'Aligns visual input with LLM semantics for VLN; SOTA while retaining explanation ability.','https://doi.org/10.1007/978-3-031-72667-5_15','ECCV ’24'],
+[64,'AVI-Math','Zhou et al.',2025,['B','D'],['geospatial','sym'],'Multimodal mathematical reasoning on aerial imagery: distance, area, vehicle trajectory estimation.',sch('Multimodal mathematical reasoning embedded in aerial vehicle imagery benchmarking analysis and exploration'),'ISPRS JPRS'],
+];
+
+const rows = DATA.map(d=>({
+  ref:d[0], name:d[1], authors:d[2], year:d[3], types:d[4], topics:d[5], what:d[6], link:d[7], linkLabel:d[8],
+  typeStr:d[4].map(t=>T[t]).join(', '),
+  topicStr:d[5].map(t=>P[t][0]).join(', ')
+}));
+
+// populate filters
+const typeSel=document.getElementById('fType'), topicSel=document.getElementById('fTopic'), yearSel=document.getElementById('fYear');
+Object.values(T).forEach(v=>typeSel.insertAdjacentHTML('beforeend',`<option>${v}</option>`));
+Object.values(P).forEach(v=>topicSel.insertAdjacentHTML('beforeend',`<option>${v[0]}</option>`));
+[...new Set(rows.map(r=>r.year))].sort((a,b)=>b-a).forEach(y=>yearSel.insertAdjacentHTML('beforeend',`<option>${y}</option>`));
+
+// legend
+document.getElementById('legend').innerHTML =
+  Object.values(P).map(v=>`<span class="topic ${v[1]}">${v[0]}</span>`).join('');
+
+let sortKey='ref', sortDir=1;
+function render(){
+  const q=document.getElementById('q').value.toLowerCase().trim();
+  const ft=typeSel.value, fp=topicSel.value, fy=yearSel.value;
+  let out=rows.filter(r=>{
+    if(ft && !r.typeStr.includes(ft)) return false;
+    if(fp && !r.topicStr.includes(fp)) return false;
+    if(fy && String(r.year)!==fy) return false;
+    if(q && !(r.name+' '+r.authors+' '+r.typeStr+' '+r.topicStr+' '+r.what+' '+r.linkLabel).toLowerCase().includes(q)) return false;
+    return true;
+  });
+  out.sort((a,b)=>{
+    let x=a[sortKey], y=b[sortKey];
+    if(typeof x==='string'){x=x.toLowerCase();y=y.toLowerCase()}
+    return (x<y?-1:x>y?1:0)*sortDir;
+  });
+  document.getElementById('body').innerHTML = out.map(r=>`
+    <tr>
+      <td class="ref">[${r.ref}]</td>
+      <td class="name">${r.name}<span class="authors">${r.authors}</span></td>
+      <td class="yr">${r.year}</td>
+      <td>${r.types.map(t=>`<span class="tag t-${T[t].split(' ')[0]}">${T[t]}</span>`).join('')}</td>
+      <td>${r.topics.map(t=>`<span class="topic ${P[t][1]}">${P[t][0]}</span>`).join('<br>')}</td>
+      <td class="what">${r.what}</td>
+      <td class="link"><a href="${r.link}" target="_blank" rel="noopener">${r.linkLabel}</a>${
+        r.link.includes('scholar.google') ? ' <span class="noid">(title search)</span>' : ''}</td>
+    </tr>`).join('');
+  document.getElementById('count').textContent = `${out.length} of ${rows.length} works`;
+}
+document.querySelectorAll('#tbl thead th').forEach(th=>{
+  th.onclick=()=>{
+    const k=th.dataset.k;
+    if(sortKey===k) sortDir*=-1; else {sortKey=k; sortDir=1}
+    document.querySelectorAll('#tbl thead th').forEach(o=>o.classList.remove('sorted'));
+    th.classList.add('sorted');
+    th.querySelector('.arrow').textContent = sortDir>0?'▼':'▲';
+    render();
+  };
+});
+['q','fType','fTopic','fYear'].forEach(id=>{
+  const el=document.getElementById(id);
+  el.addEventListener(id==='q'?'input':'change',render);
+});
+document.getElementById('reset').onclick=()=>{
+  document.getElementById('q').value=''; typeSel.value=''; topicSel.value=''; yearSel.value='';
+  sortKey='ref'; sortDir=1; render();
+};
+render();
+</script>
+</body>
+</html>
