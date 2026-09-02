@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accessible Mobility Literature Explorer</title>
+<meta name="description" content="Explore a taxonomy of built-environment attributes for accessible mobility, linked to the literature that reports them.">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='4' r='2.4' fill='%232a78d6'/><circle cx='3.4' cy='12' r='2' fill='%236da7ec'/><circle cx='12.6' cy='12' r='2' fill='%236da7ec'/></svg>">
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar" id="topbar">
+    <div class="brand">
+      <h1>Accessible Mobility Literature Explorer</h1>
+      <p id="brandSub">Loading&hellip;</p>
+    </div>
+    <div class="spacer"></div>
+    <div class="topbar-controls" id="viewControls">
+      <div class="segmented" role="group" aria-label="Graph layout">
+        <button type="button" id="layoutTree" aria-pressed="true">Radial tree</button>
+        <button type="button" id="layoutForce" aria-pressed="false">Force</button>
+      </div>
+      <button type="button" class="ghost-btn" id="expandAll">Expand all</button>
+      <button type="button" class="ghost-btn" id="fitBtn">Fit</button>
+      <button type="button" class="ghost-btn" id="themeBtn" aria-label="Toggle colour theme">Theme</button>
+    </div>
+  </header>
+
+  <div class="layout">
+
+    <!-- ============ left: ranked terms ============ -->
+    <aside class="panel panel--terms" id="panelTerms" aria-label="Terms">
+      <div class="panel-head">
+        <div class="panel-title">
+          <h2>Terms</h2>
+          <span class="count" id="termCount"></span>
+        </div>
+        <div class="segmented" role="group" aria-label="Rank terms by">
+          <button type="button" id="metricArticles" aria-pressed="true">By articles</button>
+          <button type="button" id="metricN" aria-pressed="false">By total n</button>
+        </div>
+        <input type="search" class="search" id="termSearch" placeholder="Search terms&hellip;" aria-label="Search terms">
+      </div>
+
+      <details class="filters" id="filters">
+        <summary>Filter articles <span class="active-dot" id="filterDot" hidden></span></summary>
+        <div class="filter-body">
+          <div>
+            <span class="field-label">Population</span>
+            <div class="chip-row" id="popFilters"></div>
+          </div>
+          <div>
+            <span class="field-label">Article type</span>
+            <div class="chip-row" id="typeFilters"></div>
+          </div>
+          <div>
+            <span class="field-label">Year</span>
+            <div class="chip-row" id="yearFilters"></div>
+          </div>
+          <div>
+            <button type="button" class="ghost-btn" id="clearFilters" disabled>Clear filters</button>
+          </div>
+        </div>
+      </details>
+
+      <div class="panel-body" id="termList"></div>
+    </aside>
+
+    <!-- ============ centre: graph ============ -->
+    <section class="stage" id="stage" aria-label="Taxonomy network">
+      <div class="stage-bar" id="stageBar">
+        <div class="banner" id="selectionBanner" hidden role="button" tabindex="0">
+          <span class="label" id="selectionLabel"></span>
+          <button type="button" class="ghost-btn" id="clearSelection">Clear</button>
+        </div>
+        <div class="spacer"></div>
+      </div>
+      <svg id="graph" role="img" aria-labelledby="graphTitle">
+        <title id="graphTitle">Taxonomy of built-environment attributes, sized and coloured by how many articles report each term</title>
+      </svg>
+      <div class="legend" id="legend"></div>
+      <p class="hint">Scroll to zoom &middot; drag to pan<br>Click a term to see its articles</p>
+    </section>
+
+    <!-- ============ right: detail ============ -->
+    <aside class="panel panel--detail" id="panelDetail" aria-label="Details">
+      <div class="panel-head">
+        <div class="panel-title">
+          <h2 id="detailKind">Overview</h2>
+          <button type="button" class="ghost-btn" id="backBtn" hidden>Back</button>
+        </div>
+      </div>
+      <div class="panel-body" id="detail" aria-live="polite"></div>
+    </aside>
+
+  </div>
+
+  <nav class="tabbar" id="tabbar" role="tablist" aria-label="View">
+    <button type="button" class="tab" data-panel="graph" role="tab"
+            aria-selected="true" aria-controls="stage">Graph</button>
+    <button type="button" class="tab" data-panel="terms" role="tab"
+            aria-selected="false" aria-controls="panelTerms">Terms
+      <span class="tab-badge" id="tabTermsCount"></span></button>
+    <button type="button" class="tab" data-panel="detail" role="tab"
+            aria-selected="false" aria-controls="panelDetail">
+      <span id="tabDetailLabel">Details</span>
+      <span class="tab-dot" id="tabDetailDot" hidden></span></button>
+  </nav>
+</div>
+
+<div class="tooltip" id="tooltip" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
