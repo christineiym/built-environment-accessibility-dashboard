@@ -124,17 +124,6 @@ function addInto(target, source) {
   for (let i = 0; i < target.length; i += 1) target[i] += source[i];
 }
 
-function mergeProfiles(target, source) {
-  for (const [key, values] of Object.entries(source)) {
-    const index = Number(key);
-    const held = target.get(index);
-    if (!held) {
-      target.set(index, values.slice());
-    } else {
-      for (let i = 0; i < held.length; i += 1) held[i] += values[i];
-    }
-  }
-}
 
 /**
  * Build one distribution, summing whatever base runs the selection covers.
@@ -167,8 +156,6 @@ export function combine(sel) {
     nodeHits: new Int32Array(nNodes),
     childHits: new Int32Array(nNodes),
     relations: new Map(),
-    edgeOp: new Map(),
-    nodeOp: new Map(),
     rep: {},
   };
 
@@ -178,6 +165,13 @@ export function combine(sel) {
     dist.excluded += run.excluded;
     dist.records += run.records;
     dist.unresolved += run.unresolved;
+    // A union's O is the mean over the runs it covers. Unlike prevalence,
+    // these do not add: each is already a mean, over repetitions that the
+    // union does not renormalise. Averaging equally weights a run by its
+    // existence rather than its repetition count, which is what "all models"
+    // means here -- the runs are the population.
+    if (run.om != null) (dist.omParts = dist.omParts || []).push(run.om);
+    if (run.og != null) (dist.ogParts = dist.ogParts || []).push(run.og);
     if (run.note) dist.notes.push(`${labelOf('model', run.m)} · ${labelOf('condition', run.c)}: ${run.note}`);
     addInto(dist.edgeHits, inflate(run.eh, nEdges));
     addInto(dist.nodeHits, inflate(run.nh, nNodes));
@@ -187,12 +181,15 @@ export function combine(sel) {
       if (!held) dist.relations.set(Number(index), counts.slice());
       else for (let i = 0; i < held.length; i += 1) held[i] += counts[i];
     }
-    mergeProfiles(dist.edgeOp, run.eo);
-    mergeProfiles(dist.nodeOp, run.no);
     for (const [metric, values] of Object.entries(run.rep)) {
       (dist.rep[metric] = dist.rep[metric] || []).push(...values);
     }
   }
+
+  const mean = (values) => (values && values.length
+    ? values.reduce((a, b) => a + b, 0) / values.length : null);
+  dist.oMatched = mean(dist.omParts);
+  dist.oGenerated = mean(dist.ogParts);
 
   cache.set(key, dist);
   return dist;
@@ -206,7 +203,8 @@ export function combine(sel) {
 export function metricList() {
   return [
     { id: 'prevalence', label: 'Prevalence', phrase: 'prevalence', max: 1, kind: 'share' },
-    { id: 'O', label: 'Operationality (O)', phrase: 'operationality (O)', max: 1, kind: 'rubricShare' },
+    { id: 'O', label: 'Operationality (O)', phrase: 'operationality (O)', max: 5, kind: 'rubric',
+      prose: 'the mean of the six dimensions below, 0-5' },
     ...DATA.meta.dimensions.map((dim) => ({
       id: dim.key,
       label: `— ${dim.short}`,
@@ -218,7 +216,14 @@ export function metricList() {
   ];
 }
 
-/** True when a metric is read off the rubric sample rather than off every match. */
+/**
+ * True when a metric comes from the rubric panel rather than from the matches.
+ *
+ * Rubric metrics carry a concept the panel may never have scored, so they have
+ * a "—" state that prevalence does not. They are no longer a *sample* in the
+ * old sense: the panel scored the reference taxonomies outright, so a blank
+ * means the concept was rejected on quality, not that the draw missed it.
+ */
 export function isSampled(metric) {
   return metric !== 'prevalence';
 }
@@ -227,11 +232,21 @@ export function metricSpec(id) {
   return metricList().find((metric) => metric.id === id) || metricList()[0];
 }
 
+/**
+ * Read one metric off a rubric profile.
+ *
+ * A profile is the concept's six dimension means, panel-averaged — it belongs
+ * to the reference concept, not to a run, so every distribution reads the same
+ * number here. O is the mean of the six, so the headline and the six rows under
+ * it cannot disagree.
+ */
 function profileValue(profile, metric) {
-  if (!profile || !profile[0]) return null;
-  if (metric === 'O') return profile[1] ? profile[2] / profile[1] : null;
+  if (!profile) return null;
+  if (metric === 'O') {
+    return profile.reduce((a, b) => a + b, 0) / profile.length;
+  }
   const index = DATA.meta.dimensions.findIndex((dim) => dim.key === metric);
-  return index < 0 ? null : profile[3 + index] / profile[0];
+  return index < 0 ? null : profile[index];
 }
 
 /**
@@ -241,16 +256,23 @@ function profileValue(profile, metric) {
  * reference edge that repetition matched, which is what "a node that is
  * covered" means in the graph. `childHits` keeps the stricter reading — the
  * concept was named as the child of a match — for the detail panel.
+ *
+ * Only `hits` varies between distributions. The rubric profile is the
+ * reference concept's own, so two distributions over one reference hold
+ * identical O columns and differ in prevalence alone — which is the point:
+ * a concept is as measurable as it is, and a run is judged on which concepts
+ * it reached.
  */
 export function rows(dist, kind) {
   const block = DATA.useCases[dist.useCase];
   const source = kind === 'edge' ? block.edges : block.nodes;
   const hits = kind === 'edge' ? dist.edgeHits : dist.nodeHits;
-  const profiles = kind === 'edge' ? dist.edgeOp : dist.nodeOp;
   const reps = dist.reps || 1;
 
   return source.map((item, index) => {
-    const profile = profiles.get(index) || null;
+    // An edge inherits its child's profile: the edge asserts the child as an
+    // attribute of the parent, and it is the child a surveyor would record.
+    const profile = (kind === 'edge' ? block.nodes[item.t].o : item.o) || null;
     const row = {
       kind,
       index,
@@ -261,7 +283,6 @@ export function rows(dist, kind) {
       meta: !!item.m,
       depth: item.d,
       profile,
-      opTerms: profile ? profile[0] : 0,
       O: profileValue(profile, 'O'),
     };
     if (kind === 'edge') {
@@ -318,8 +339,28 @@ export function spread(values) {
 }
 
 /** Headline counts and spreads for one distribution. */
+/**
+ * Mean per-prediction coverage, derived from the hit counts.
+ *
+ * Each entry of `hits` is how many repetitions reached that reference item, so
+ * `hits[i] / reps` is its prevalence and the mean of those is the share of the
+ * reference a typical single repetition reached. Same quantity as averaging
+ * each repetition's own coverage — the double sum is identical — which is why
+ * this needs no per-repetition table and works for nodes as well as edges.
+ */
+function meanPrevalence(hits, reps) {
+  if (!reps || !hits.length) return null;
+  let total = 0;
+  for (let i = 0; i < hits.length; i += 1) total += hits[i];
+  return total / (reps * hits.length);
+}
+
 export function stats(dist) {
   const block = DATA.useCases[dist.useCase];
+  // Pooled coverage: pour every repetition's matches into one bag and ask what
+  // share of the reference the bag covers. An item counts once however often it
+  // was reached, which is what makes this coverage rather than prevalence —
+  // the counts are still there in `hits`, and prevalence reads them.
   const countHit = (array) => array.reduce((total, hits) => total + (hits > 0 ? 1 : 0), 0);
   return {
     reps: dist.reps,
@@ -330,11 +371,91 @@ export function stats(dist) {
     nodesTotal: block.nodes.length,
     edges: countHit(dist.edgeHits),
     edgesTotal: block.edges.length,
+    // Mean prevalence is mean per-prediction coverage: averaging "share of
+    // repetitions that reached item i" over items is the same sum as averaging
+    // "share of items reached" over repetitions. It is derived here rather than
+    // read from `rep` so it exists for node coverage too, which the
+    // per-repetition table does not carry.
+    perPredNode: meanPrevalence(dist.nodeHits, dist.reps),
+    perPredEdge: meanPrevalence(dist.edgeHits, dist.reps),
     coverage: spread(dist.rep.coverage || []),
     coverageAccessibility: spread(dist.rep.coverageAccessibility || []),
     alignment: spread(dist.rep.alignment || []),
     redundancy: spread(dist.rep.redundancy || []),
   };
+}
+
+/**
+ * Coverage broken down by accessibility category, for one distribution.
+ *
+ * Both numbers are the same ones `stats` reports for the whole reference, over
+ * the subset of items carrying one subtopic label — pooled coverage counts an
+ * item once however often it was reached, and per-prediction coverage is the
+ * mean prevalence, which equals the mean over repetitions of the share of that
+ * category a single schema reached.
+ *
+ * Only coverage decomposes. Alignment and redundancy are computed per
+ * repetition over a whole schema and have no per-category value to report; the
+ * page says so rather than splitting them on some invented rule. A category
+ * with no reference edges is returned with `edgesTotal: 0` and null coverages,
+ * because "the reference has nothing here" and "the run reached nothing here"
+ * are different facts and the second one is not true.
+ *
+ * @param {object} dist A combined distribution from `combine`.
+ * @returns {Array<object>} One entry per category, in `DATA.meta.subtopics`
+ *   order, plus a record-keeping row when the reference has such edges.
+ */
+export function subtopicBreakdown(dist) {
+  const block = DATA.useCases[dist.useCase];
+  const reps = dist.reps || 1;
+  const blank = () => ({ total: 0, hit: 0, prevalence: 0 });
+  const buckets = new Map();
+  const bucket = (label) => {
+    if (!buckets.has(label)) {
+      buckets.set(label, { label, edges: blank(), nodes: blank(), metaEdges: 0 });
+    }
+    return buckets.get(label);
+  };
+
+  // Seed every declared category, so one with no reference items still gets a
+  // row. Dropping it would let "the reference has nothing here" disappear
+  // silently, and a reader would take the shorter table for a shorter
+  // reference rather than for an empty category — the same mistake the
+  // subtopic figure guards against by hatching those cells instead of
+  // printing 0%.
+  for (const label of DATA.meta.subtopics) bucket(label);
+
+  const walk = (items, hits, key) => {
+    items.forEach((item, index) => {
+      const entry = bucket(item.c || DATA.meta.noneLabel);
+      const slot = entry[key];
+      slot.total += 1;
+      if (hits[index] > 0) slot.hit += 1;
+      slot.prevalence += hits[index] / reps;
+      if (key === 'edges' && item.m) entry.metaEdges += 1;
+    });
+  };
+  walk(block.edges, dist.edgeHits, 'edges');
+  walk(block.nodes, dist.nodeHits, 'nodes');
+
+  const order = [...DATA.meta.subtopics];
+  for (const label of buckets.keys()) if (!order.includes(label)) order.push(label);
+
+  return order.map((label) => {
+    const entry = buckets.get(label);
+    const shape = (slot) => ({
+      total: slot.total,
+      hit: slot.hit,
+      pooled: slot.total ? slot.hit / slot.total : null,
+      perPrediction: slot.total ? slot.prevalence / slot.total : null,
+    });
+    return {
+      subtopic: label,
+      metaEdges: entry.metaEdges,
+      edges: shape(entry.edges),
+      nodes: shape(entry.nodes),
+    };
+  });
 }
 
 /**

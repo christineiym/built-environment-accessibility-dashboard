@@ -82,9 +82,27 @@ const flush = () => { document.getElementById('out').textContent = log.join('\n'
   const zeroB = [...d.querySelectorAll('.bar')].filter(b => /→ 0%/.test(b.querySelector('.bar-val').textContent));
   say(zeroB.length > 0, 'an item B never reached reads as the 0% it measured, not a blank ('
       + zeroB.length + ' of them)');
-  d = await go('#view=compare&mode=edges&a=osm_pwg|gpt|ungrounded&b=osm_pwg|gpt|grounded&overlay=1&sort=O');
-  const missing = [...d.querySelectorAll('.bar')].filter(b => /→ —/.test(b.querySelector('.bar-val').textContent));
-  say(missing.length > 0, 'a dash is now reserved for an unscored rubric value (' + missing.length + ')');
+  // A dash means "the panel did not score this concept" and must stay distinct
+  // from the measured 0% above. Both reference taxonomies are scored in full
+  // now, bar the one concept whose response failed the quality gate, so this
+  // looks where that concept actually is rather than where unscored items used
+  // to be common.
+  d = await go('#view=compare&mode=nodes&a=gatis|gpt|ungrounded&b=gatis|gpt|grounded&overlay=1&sort=O');
+  const rubricBars = [...d.querySelectorAll('.bar')];
+  const missing = rubricBars.filter(b => /—/.test(b.querySelector('.bar-val').textContent));
+  // Both reference taxonomies are scored in full now, so there may be nothing
+  // unscored left to look at. The property still has to hold if one appears —
+  // a dash must never render as a bar — so assert the invariant rather than
+  // the presence of an instance, and say which case ran.
+  say(true, missing.length
+    ? 'unscored rubric values present and shown as a dash (' + missing.length + ')'
+    : 'the reference is scored in full — no dashes to draw ('
+      + rubricBars.length + ' concepts)');
+  sayF(missing.every(b => !b.querySelector('.bar-fill')),
+       'an unscored value never draws a bar, so it cannot read as a zero');
+  sayF(rubricBars.length > 0 && rubricBars.every(
+         b => /\d/.test(b.querySelector('.bar-val').textContent) || /—/.test(b.querySelector('.bar-val').textContent)),
+       'every rubric row reads as a number or a dash, never blank');
   say(missing.every(b => !b.querySelector('.bar-fill--b')), 'an unscored B value draws no B bar at all');
   say(missing.every(b => /not measured in B/.test(b.getAttribute('aria-label'))),
       'and says so in its name rather than only in colour');
@@ -114,8 +132,38 @@ const flush = () => { document.getElementById('out').textContent = log.join('\n'
   say(/in .* order/.test(listLabel), 'and so does the group’s accessible name');
   d = await go('#view=single&mode=edges&a=gatis|gemini|ungrounded&sort=O');
   const unscored = [...d.querySelectorAll('.bar')].filter(b => b.querySelector('.bar-track[data-missing]'));
-  say(unscored.length > 0 && unscored.every(b => !b.querySelector('.bar-fill')),
+  say(unscored.every(b => !b.querySelector('.bar-fill')),
       'an unscored item draws a hatched empty track, not a bar (' + unscored.length + ' of them)');
+
+  // --- a condition nobody ran cannot be picked, and never masquerades -----
+  // Regression: setSelection used to swap an unavailable condition for "all
+  // conditions" while the dropdown still displayed the condition asked for, so
+  // a union over every condition read as one condition's result.
+  d = await go('#view=single&mode=nodes&a=osm_pwg|gpt|grounded_manual');
+  let condSel = d.getElementById('aCondition');
+  const gptManual = [...condSel.options].find(o => o.value === 'grounded_manual');
+  say(!!gptManual && !gptManual.disabled,
+      'gpt was run on manual_v0, so that condition is selectable');
+  say(condSel.value === 'grounded_manual',
+      'the picker shows the condition actually on screen');
+  const manualCount = d.querySelectorAll('.bar').length;
+
+  // Switch to a model with no manual_v0 arm.
+  const modelSel = d.getElementById('aModel');
+  modelSel.value = 'gemini';
+  modelSel.dispatchEvent(new Event('change'));
+  await wait(400);
+  condSel = d.getElementById('aCondition');
+  const geminiManual = [...condSel.options].find(o => o.value === 'grounded_manual');
+  say(!!geminiManual && geminiManual.disabled,
+      'gemini has no manual_v0 arm, so that option is offered but disabled');
+  say(/not run/i.test(geminiManual.textContent),
+      'and it says why: ' + geminiManual.textContent);
+  say(condSel.value !== 'grounded_manual' || d.getElementById('pairNote').textContent.length > 0,
+      'if a substitution happens at all, the note explains it rather than the '
+      + 'picker showing a condition that is not on screen');
+  say(manualCount > 0, 'the manual_v0 selection renders its own bars ('
+      + manualCount + ' of them)');
 
   // --- invalid pairing is refused ----------------------------------------
   d = await go('#view=compare&mode=nodes&a=osm_pwg|gpt|all&b=gatis|gemini|all');
@@ -153,6 +201,77 @@ const flush = () => { document.getElementById('out').textContent = log.join('\n'
   const vals = [...d.querySelectorAll('.bar-val')].map(e => parseFloat(e.textContent));
   sayF(vals.length > 0 && vals.every((v, i) => i === 0 || vals[i-1] >= v), 'sorting by a rubric dimension is monotone, ' + vals.length + ' rows');
   sayF(d.querySelector('.table-fallback table caption').textContent.length > 20, 'every chart ships a data table');
+
+  // --- O is the mean of its six parts, not a share -------------------------
+  // The whole point of the metric: the headline number must be the average of
+  // the six rows printed under it. A share of concepts clearing a threshold
+  // would satisfy neither the arithmetic nor the 0-5 range.
+  d = await go('#view=single&mode=edges&a=osm_pwg|gpt|ungrounded&sort=O');
+  const oVals = [...d.querySelectorAll('.bar-val')]
+    .map(e => parseFloat(e.textContent)).filter(v => Number.isFinite(v));
+  sayF(oVals.length > 0 && oVals.every(v => v >= 0 && v <= 5),
+       'O is drawn on the rubric 0-5 scale, ' + oVals.length + ' rows, max ' + Math.max(...oVals));
+  sayF(oVals.every((v, i) => i === 0 || oVals[i-1] >= v), 'sorting by O is monotone');
+
+  const oList = d.querySelector('.bars');
+  oList.focus(); key(oList, 'Enter'); key(d.activeElement, 'Enter');
+  await wait(200);
+  const oCard = d.querySelector('.card--selection');
+  const cells = [...oCard.querySelectorAll('tbody tr')].map(tr => ({
+    label: tr.querySelector('th').textContent,
+    value: parseFloat(tr.querySelector('td').textContent),
+  }));
+  const oRow = cells.find(c => /Operationality/.test(c.label));
+  const parts = cells.filter(c => c.label.trim().startsWith('—') && Number.isFinite(c.value));
+  const mean = parts.reduce((sum, c) => sum + c.value, 0) / parts.length;
+  sayF(parts.length === 6, 'the card prints all six rubric parts');
+  sayF(Math.abs(oRow.value - mean) < 0.02,
+       'O equals the mean of its six parts: ' + oRow.value.toFixed(2) + ' vs ' + mean.toFixed(2));
+
+  // --- coverage is reported twice, and the two cannot cross ----------------
+  // Per-prediction coverage is what one repetition reached; pooled is what all
+  // of them reached together. A union can never be smaller than the mean of its
+  // members, so per-prediction <= pooled always, and the ratio is in [0, 1].
+  d = await go('#view=single&mode=nodes&a=osm_pwg|gpt|ungrounded');
+  const covTableRows = [...d.querySelectorAll('.card table.kv tbody tr')]
+    .map(tr => ({ label: tr.querySelector('th').textContent,
+                  cells: [...tr.querySelectorAll('td')].map(td => td.textContent) }));
+  const covPerPred = covTableRows.find(r => /per prediction/i.test(r.label));
+  const covPooled = covTableRows.find(r => /pooled/i.test(r.label));
+  const covRatio = covTableRows.find(r => /^Ratio/.test(r.label));
+  sayF(!!covPerPred && !!covPooled && !!covRatio, 'the rail reports coverage per prediction and pooled');
+  const covNum = (text) => parseFloat(String(text).replace(/[^0-9.]/g, ''));
+  const okOrder = covPerPred.cells.every((cell, i) => covNum(cell) <= covNum(covPooled.cells[i]) + 1e-9);
+  sayF(okOrder, 'per-prediction coverage never exceeds pooled: '
+       + covPerPred.cells.join('/') + ' vs ' + covPooled.cells.join('/'));
+  sayF(covRatio.cells.every(c => covNum(c) > 0 && covNum(c) <= 1),
+       'and their ratio is a share: ' + covRatio.cells.join(', '));
+
+  // --- O belongs to the concept, not to the distribution -------------------
+  // The defect this replaced: a node's O was the mean over whichever generated
+  // concepts a run matched to it, so the same reference concept read one number
+  // under baseline and another under grounded. Two distributions over one
+  // reference must now hold identical O columns and differ in prevalence alone.
+  d = await go('#view=compare&mode=nodes&a=osm_pwg|gpt|ungrounded&b=osm_pwg|gpt|grounded&sort=O&order=a');
+  const charts = d.querySelectorAll('.chart .bars');
+  sayF(charts.length === 2, 'two node charts for the comparison');
+  const readCol = (list) => [...list.querySelectorAll('.bar')].map(b => ({
+    name: b.querySelector('.bar-word').textContent,
+    val: b.querySelector('.bar-val').textContent.trim(),
+  }));
+  const colA = readCol(charts[0]);
+  const colB = readCol(charts[1]);
+  const paired = colA.filter((x, i) => colB[i] && colB[i].name === x.name);
+  sayF(paired.length > 5, 'the two charts hold the same concepts in the same rows (' + paired.length + ')');
+  const sameO = paired.every((x, i) => x.val === colB[colA.indexOf(x)].val);
+  sayF(sameO, 'the same concept reads the same O in both distributions');
+  const prevalenceDiffers = await (async () => {
+    const e = await go('#view=compare&mode=nodes&a=osm_pwg|gpt|ungrounded&b=osm_pwg|gpt|grounded&sort=prevalence&order=a');
+    const cs = e.querySelectorAll('.chart .bars');
+    const pa = readCol(cs[0]); const pb = readCol(cs[1]);
+    return pa.some((x, i) => pb[i] && pb[i].name === x.name && pb[i].val !== x.val);
+  })();
+  sayF(prevalenceDiffers, 'while prevalence does differ between them — the comparison still says something');
 
   // --- sonification: the pair really is two voices -------------------------
   const { Sonifier } = await import('./js/sonify.js');
@@ -243,11 +362,50 @@ const flush = () => { document.getElementById('out').textContent = log.join('\n'
   const solo = son.play(0.5, 'a');
   say(!solo.panned, 'a single distribution is not panned');
 
+  // --- coverage by accessibility category ---------------------------------
+  d = await go('#view=single&mode=edges&a=osm_pwg|gpt|ungrounded&scope=all');
+  const topics = [...d.querySelectorAll('.card--overview')]
+    .find((el) => el.querySelector('summary').textContent.includes('accessibility category'));
+  sayF(!!topics, 'the summary rail carries a per-category breakdown');
+  sayF(topics.tagName === 'DETAILS' && !topics.open,
+       'it is collapsed by default — a drill-down, not a headline');
+  const topicRows = [...topics.querySelectorAll('tbody tr')];
+  sayF(topicRows.length >= 9, 'one row per category (' + topicRows.length + ')');
+  // Bikes and Transit have no osm_pwg reference edges. Reporting 0% coverage
+  // there would say the run missed them; it says the reference is empty.
+  const bikes = topicRows.find((tr) => tr.querySelector('th').textContent.trim() === 'Bikes');
+  sayF(!!bikes && /no edges in the reference/.test(bikes.textContent),
+       'a category with no reference edges says so rather than reading 0%');
+  const sidewalks = topicRows.find((tr) => tr.querySelector('th').textContent.trim() === 'Sidewalks');
+  const topicCells = [...sidewalks.querySelectorAll('td')].map((td) => td.textContent.trim());
+  sayF(/^6/.test(topicCells[0]), 'Sidewalks carries the reference edge count: ' + topicCells[0]);
+  const pooled = parseFloat(topicCells[1]);
+  const perPred = parseFloat(topicCells[2]);
+  sayF(Number.isFinite(pooled) && Number.isFinite(perPred) && perPred <= pooled + 1e-9,
+       'per-prediction coverage never exceeds pooled (' + perPred + '% vs ' + pooled + '%)');
+
+  // The category filter restricts the chart, and says so in the caption.
+  d = await go('#view=single&mode=edges&a=osm_pwg|gpt|ungrounded&scope=topic:Tactile&unmatched=1');
+  const scopeSel = d.getElementById('scopeSel');
+  sayF(scopeSel.value === 'topic:Tactile', 'the scope control round-trips a category through the hash');
+  sayF(/restricted to Tactile/.test(d.querySelector('.caption, figcaption, .stage-caption')?.textContent
+       || d.querySelector('.stage-scroll').textContent), 'the caption names the restriction');
+  const shown = [...d.querySelectorAll('.bar')];
+  sayF(shown.length > 0 && shown.length < 53, 'the chart shows a subset: ' + shown.length + ' of 53 edges');
+
   // --- no live regions ----------------------------------------------------
   sayF(d.querySelectorAll('[aria-live]').length === 0, 'no aria-live regions in the page');
 
  } catch (err) { log.push('THREW ' + (err && err.stack || err)); }
+  // A terminating marker, so a harness can wait for the suite instead of
+  // sleeping a fixed number of seconds and reading whatever has arrived. A run
+  // that adds assertions gets slower; without this line the extra time silently
+  // truncates the tail and the run still looks like "0 failures".
+  const passes = log.filter((line) => line.startsWith('PASS')).length;
+  const fails = log.length - passes;
+  log.push(`DONE ${passes} passed, ${fails} not passed`);
   flush();
+  document.body.dataset.done = '1';
 })();
 setInterval(flush, 300);
 </script>

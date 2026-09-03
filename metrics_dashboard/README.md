@@ -27,8 +27,11 @@ with its parts. Unions are computed in the browser for that reason — the JSON
 holds only the eight base runs.
 
 The two local models in `pipeline.runs` (`gemma4-e4b`, `llama3.2`) are **out of
-the grid**: 8 repetitions rather than 100, and no grounded cell, so "all models"
-would mean something different in each half. `build_data.py --include-local`
+the grid**, but for a smaller reason than before. Their `osm_pwg` arms were
+regenerated at 100 repetitions on 2026-09-03 and now match the frontier arms;
+their `gatis` arms are still 8. Neither has a grounded cell — the grounding
+corpus is ~275K tokens, past both models' context — so "all conditions" would
+still mean something different in each half. `build_data.py --include-local`
 adds them if you want a look.
 
 ### Which pairs may be compared
@@ -52,14 +55,26 @@ distinct ones, most appearing once.
 | Metric | Meaning |
 |---|---|
 | **Prevalence** | Share of repetitions that matched this edge. For a concept: share of repetitions where it was an endpoint of some matched edge. |
-| **Operationality (O)** | Of the generated concepts that matched here and that the rubric panel scored, the share the panel called operational. Majority vote over three evaluators; ties left undecided, as in `pipeline.phases.operationality.consensus_calls`. |
-| **Its six parts** | `E_collectible` … `J_practitioner_use`, 0–5, averaged over the panel and over the matched concepts. Each is sortable on its own. |
+| **Operationality (O)** | The reference concept's **own** rubric score — the mean of its six dimensions, 0–5, panel-averaged over three raters. An edge carries its child's. |
+| **Its six parts** | `E_collectible` … `J_practitioner_use`, 0–5. Each is sortable on its own. |
 
-**Operationality is a sample, and the dashboard says so.** `O` is estimated
-from a seeded two-stage sample of generated concepts (`pipeline.phases.opsample`),
-so only some of the concepts matched to a reference edge were ever scored — 41
-of 53 osm_pwg edges get a profile under GPT baseline, but only 10 of 225 GATIS
-edges under Gemini baseline. Unscored items show **—**, never 0, and sort last.
+**O belongs to the concept, not to the distribution.** Every distribution shows
+the same O for a given node or edge, because operationality is a property of the
+concept and not of who matched it. What differs between two distributions is
+**prevalence** — which concepts each one reached. Sorting by O therefore ranks
+the *reference* by how measurable it is, and the bars then say who got there.
+
+It used to work the other way, and the result was wrong: a node's O was the mean
+over whichever generated concepts a run happened to match to it, so
+`access_aisle` read 4.235 for GPT baseline and 3.632 for GPT grounded. No
+concept had scored differently — 9 concepts matched it in one run and 13 in the
+other. The node moved when nothing about the node had changed. The reference
+taxonomies are now scored outright by `v3/20_operationality_reference.py`, with
+**no parent context**, so a concept's score is a pure function of the concept.
+
+**O is the average of its six parts**, on their scale, so the headline number
+and the rows under it are one measurement at two levels of detail — a low `O`
+always has a dimension to blame, and `selftest.html` asserts the arithmetic.
 
 Two grouping labels ride along, both from the reference rather than the model:
 
@@ -70,8 +85,30 @@ Two grouping labels ride along, both from the reference rather than the model:
 - **Accessibility category** — the subtopic panel's consensus for that edge,
   from `v3/data/reference_subtopics.json`. Edges the panel judged
   record-keeping (`None of these` by majority) are shown in italic, coloured
-  neutral grey, and can be dropped entirely with **Reference edges →
-  Accessibility only** — 280 of GATIS's 912 edges.
+  neutral grey, and can be dropped entirely with **Restrict the reference to →
+  Accessibility only** — 280 of GATIS's 912 edges. The same control restricts
+  the page to a single category, and the summary rail carries **Coverage by
+  accessibility category**, which is every category at once.
+
+## Coverage by accessibility category
+
+A collapsed block in the summary rail, one row per category, with the two
+coverages the rail already reports for the whole reference: pooled — the share
+of that category's items reached by at least one repetition — and per
+prediction, the share a single schema reaches on average. In Compare view each
+cell carries A and B. Switching between **Nodes** and **Edges** switches the
+table between reference concepts and reference edges.
+
+A category with no reference items says so rather than reading 0%: on OSM/PWG
+that is Bikes and Transit, where the reference has nothing to reach and a run
+cannot miss it. The same distinction the hatched cells make in
+`v3/output/metrics_extra/subtopic_coverage*.png`, which this table is the
+interactive form of — the numbers are computed in the browser from the same
+hit counts and agree with `subtopic_coverage.csv` to four decimals.
+
+Coverage is the only headline metric that splits this way. Alignment and
+redundancy are computed per repetition over a whole schema, so there is no
+per-category value to report and the page does not invent one.
 
 ## The three modes
 
@@ -241,7 +278,9 @@ It reads from `v3/` and writes nothing there:
 | `v3/data/references/<use case>.csv` | the reference taxonomy, via `schema_grader.hierarchy` |
 | `v3/data/matched/<run>.csv` | one row per repetition of the matcher |
 | `v3/data/reference_subtopics.json` | accessibility categories, per-rater votes |
-| `v3/output/metrics_extra/operationality_verdicts.csv` | the rubric panel |
+| `v3/output/metrics_extra/reference_score_cache_t0.json` | the rubric panel's scores for the reference concepts |
+| `v3/output/metrics_extra/operationality_matched.csv` | each run's O over the concepts it reached |
+| `v3/output/metrics_extra/operationality_consensus.csv` | each run's O over the concepts it proposed |
 | `v3/output/metrics_extra/metric_per_rep.csv` | per-repetition coverage and alignment |
 
 Parsing and exclusion follow the pipeline exactly — `pipeline.parsing` for the

@@ -167,13 +167,6 @@ export class BarChart {
     const value = document.createElement('span');
     value.className = 'bar-val';
     value.textContent = props.overlay ? `${item.textA} → ${item.textB}` : item.textA;
-    if (item.sampleA != null) {
-      // The rubric sample size, beside the score it was computed from: 100%
-      // off one scored concept and 100% off eight are not the same claim.
-      const size = document.createElement('small');
-      size.textContent = props.overlay ? ` n ${item.sampleA}/${item.sampleB ?? 0}` : ` n ${item.sampleA}`;
-      value.append(size);
-    }
 
     row.append(name, track, value);
     row.addEventListener('mouseenter', () => this.handlers.onCursor?.(item, 'pointer'));
@@ -260,11 +253,6 @@ function ariaLabel(item, props) {
   }
   if (item.fractionA == null) parts.push('not measured');
   if (props.overlay && item.fractionB == null) parts.push('not measured in B');
-  if (item.sampleA != null) {
-    parts.push(item.sampleA
-      ? `from ${item.sampleA} scored concept${item.sampleA === 1 ? '' : 's'}`
-      : 'no scored concepts');
-  }
   if (item.row.meta) parts.push('record-keeping');
   parts.push(item.row.subtopic);
   return parts.join(', ');
@@ -298,8 +286,7 @@ function dataTable(items, props) {
   for (const item of items) {
     const cells = props.overlay
       ? [item.textA, item.textB, item.deltaText ?? '—', item.row.subtopic]
-      : [item.sampleA == null ? item.textA : `${item.textA} (n ${item.sampleA})`,
-         `${item.row.hits} of ${item.reps} reps`, item.row.subtopic];
+      : [item.textA, `${item.row.hits} of ${item.reps} reps`, item.row.subtopic];
     const tr = document.createElement('tr');
     tr.innerHTML = `<th scope="row">${escapeHtml(item.label)}</th>${
       cells.map((cell) => `<td>${escapeHtml(String(cell))}</td>`).join('')}`;

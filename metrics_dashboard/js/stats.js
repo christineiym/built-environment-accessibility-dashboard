@@ -6,7 +6,7 @@
  * with the same mean can be a tight cluster and a bimodal split.
  */
 
-import { DATA, formatValue, overview, stats } from './data.js';
+import { DATA, formatValue, overview, stats, subtopicBreakdown } from './data.js';
 
 const PERCENT = (value) => (value == null ? '—' : `${(value * 100).toFixed(1)}%`);
 const COUNT = (value) => value.toLocaleString('en-US');
@@ -21,6 +21,7 @@ export function renderSummary(container, state, distA, distB) {
   container.append(distributionCard(distA, state.nameA, 'a'));
   if (distB) container.append(distributionCard(distB, state.nameB, 'b'));
 
+  container.append(subtopicBlock(state, distA, distB));
   container.append(overviewBlock());
 }
 
@@ -60,7 +61,7 @@ function selectionCard(state, distA, distB) {
     cell(rowA, distA, (row, dist) => `${PERCENT(row.prevalence)} <small>(${row.hits}/${dist.reps})</small>`),
     cell(rowB, distB, (row, dist) => `${PERCENT(row.prevalence)} <small>(${row.hits}/${dist.reps})</small>`)]);
 
-  lines.push(['Operationality O',
+  lines.push(['Operationality O <small>mean of the six</small>',
     cell(rowA, distA, (row) => opText(row)),
     cell(rowB, distB, (row) => opText(row))]);
 
@@ -87,23 +88,24 @@ function selectionCard(state, distA, distB) {
 
   const note = document.createElement('p');
   note.className = 'note';
-  note.textContent = rowA && rowA.opTerms
-    ? `Rubric scores come from the ${rowA.opTerms} generated concept${rowA.opTerms === 1 ? '' : 's'} `
-      + 'the panel scored among those matched here — a sample, not every match.'
-    : 'No generated concept matched here was in the operationality sample, so the rubric columns are blank rather than zero.';
+  note.textContent = rowA && rowA.profile
+    ? 'Rubric scores are this reference concept\u2019s own, panel-averaged over three '
+      + 'raters — the same number under every distribution. What differs between '
+      + 'them is prevalence: which repetitions reached it.'
+    : 'The panel did not score this concept, so the rubric columns are blank rather than zero.';
   section.append(note);
   return section;
 }
 
 function dimValue(row, key) {
-  if (!row || !row.profile || !row.profile[0]) return null;
+  if (!row || !row.profile) return null;
   const index = DATA.meta.dimensions.findIndex((dim) => dim.key === key);
-  return row.profile[3 + index] / row.profile[0];
+  return index < 0 ? null : row.profile[index];
 }
 
 function opText(row) {
-  if (!row.profile || !row.profile[1]) return '—';
-  return `${PERCENT(row.O)} <small>(${row.profile[2]}/${row.profile[1]} concepts)</small>`;
+  if (!row.profile) return '—';
+  return `${row.O.toFixed(2)} <small>/ 5</small>`;
 }
 
 function relationText(row) {
@@ -133,13 +135,14 @@ function distributionCard(dist, name, series) {
   const entries = [
     ['Repetitions', COUNT(summary.reps) + (summary.excluded ? ` (+${summary.excluded} excluded)` : '')],
     ['Predictions', COUNT(summary.records)],
-    ['Concepts reached', `${COUNT(summary.nodes)} of ${COUNT(summary.nodesTotal)}`],
-    ['Edges reached', `${COUNT(summary.edges)} of ${COUNT(summary.edgesTotal)}`],
     ['Invented reference edges', COUNT(summary.unresolved)],
   ];
   counts.innerHTML = entries.map(([term, value]) =>
     `<div><dt>${term}</dt><dd>${value}</dd></div>`).join('');
   section.append(counts);
+
+  section.append(coveragePair(summary));
+  section.append(operationalityPair(dist));
 
   const spreads = document.createElement('div');
   spreads.className = 'spreads';
@@ -158,6 +161,87 @@ function distributionCard(dist, name, series) {
     section.append(note);
   }
   return section;
+}
+
+/**
+ * Coverage two ways, because one number has been doing both jobs.
+ *
+ * **Per prediction** is what a single repetition reached — one generated
+ * schema against the reference. It has a sampling distribution, drawn as a box
+ * below, and it is comparable between runs with different repetition counts.
+ *
+ * **Pooled** treats every repetition's matches as one bag and asks what share
+ * of the reference the bag covers. It is the ceiling a single prediction
+ * samples from, and it rises with the number of repetitions by construction —
+ * so it is *not* comparable between a 100-repetition run and an 8-repetition
+ * one, and it does not exist for a single prediction at all, where the bag is
+ * the prediction.
+ *
+ * Their ratio is the third row: 1.00 means every repetition reached the same
+ * items, and a low value means the run's breadth comes from saying different
+ * things each time rather than from any one schema being broad.
+ */
+function coveragePair(summary) {
+  const wrap = document.createElement('div');
+  wrap.className = 'spreads';
+  const pct = (value) => (value == null ? '—' : `${(value * 100).toFixed(1)}%`);
+  const ratio = (per, pooled) => (per == null || !pooled ? '—' : (per / pooled).toFixed(2));
+  const pooledNode = summary.nodesTotal ? summary.nodes / summary.nodesTotal : null;
+  const pooledEdge = summary.edgesTotal ? summary.edges / summary.edgesTotal : null;
+  wrap.innerHTML = `<table class="kv">
+    <thead><tr><th scope="col"></th><th scope="col">concepts</th><th scope="col">edges</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Coverage per prediction</th>
+          <td>${pct(summary.perPredNode)}</td><td>${pct(summary.perPredEdge)}</td></tr>
+      <tr><th scope="row">Coverage pooled</th>
+          <td>${pct(pooledNode)} <small>(${COUNT(summary.nodes)} of ${COUNT(summary.nodesTotal)})</small></td>
+          <td>${pct(pooledEdge)} <small>(${COUNT(summary.edges)} of ${COUNT(summary.edgesTotal)})</small></td></tr>
+      <tr><th scope="row">Ratio</th>
+          <td>${ratio(summary.perPredNode, pooledNode)}</td>
+          <td>${ratio(summary.perPredEdge, pooledEdge)}</td></tr>
+    </tbody></table>
+    <p class="note">Pooled treats all ${COUNT(summary.reps)} repetitions as one bag,
+    so it climbs with the repetition count and does not compare across runs of
+    different length. A single prediction has no pooled coverage — the bag would
+    be the prediction.</p>`;
+  return wrap;
+}
+
+/**
+ * The two operationality numbers, side by side, with the gap between them.
+ *
+ * They count different populations and answer different questions, so neither
+ * stands alone:
+ *
+ * - **reached** — the mean rubric score of the *reference* concepts this
+ *   distribution's repetitions landed on. It is what the node and edge rows on
+ *   this page decompose into, and it moves only when a run reaches a different
+ *   set of concepts.
+ * - **proposed** — the mean rubric score of concepts sampled from what the run
+ *   *wrote*, matched or not.
+ *
+ * The gap is the interesting part. Positive means the concepts a run landed on
+ * the reference are more measurable than the ones it proposed at large; the
+ * reference is pulling it up. Negative means the run proposed better concepts
+ * than the reference has room for.
+ */
+function operationalityPair(dist) {
+  const wrap = document.createElement('div');
+  wrap.className = 'spreads';
+  const fmt = (value) => (value == null ? '—' : `${value.toFixed(2)} <small>/ 5</small>`);
+  const gap = (dist.oMatched != null && dist.oGenerated != null)
+    ? dist.oMatched - dist.oGenerated : null;
+  wrap.innerHTML = `<table class="kv"><tbody>
+    <tr><th scope="row">Operationality of what it <b>reached</b></th>
+        <td>${fmt(dist.oMatched)}</td></tr>
+    <tr><th scope="row">Operationality of what it <b>proposed</b></th>
+        <td>${fmt(dist.oGenerated)}</td></tr>
+    <tr><th scope="row">Gap</th><td>${
+      gap == null ? '—' : `${gap >= 0 ? '+' : ''}${gap.toFixed(2)}`}</td></tr>
+  </tbody></table>
+  <p class="note">Reached: the reference concepts this distribution landed on,
+  each scored once. Proposed: a seeded sample of what it wrote, matched or not.</p>`;
+  return wrap;
 }
 
 /** A labelled box-and-whisker over [0, 1], with the numbers beside it. */
@@ -180,6 +264,92 @@ function spreadRow(label, values, kind) {
     <span class="spread-text">median ${PERCENT(values.median)}
       <small>IQR ${x(values.q1)}–${x(values.q3)} · n=${values.n}</small></span>`;
   return wrap;
+}
+
+// ---------------------------------------------------------------------------
+// coverage, split by accessibility category
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-category coverage for the distributions on screen.
+ *
+ * Collapsed by default: it is a drill-down, not a headline, and the headline
+ * numbers above it are over the whole reference. Both coverages are shown
+ * because they disagree in the way that matters — pooled says what the run
+ * reached across all its repetitions, per prediction says what one schema
+ * reached, and a category where the first is high and the second low is one
+ * the run only covers by saying different things each time.
+ */
+function subtopicBlock(state, distA, distB) {
+  const details = document.createElement('details');
+  details.className = 'card card--overview';
+  details.innerHTML = '<summary><h2>Coverage by accessibility category</h2></summary>';
+
+  const mode = state.mode === 'nodes' ? 'nodes' : 'edges';
+  const noun = mode === 'nodes' ? 'concepts' : 'edges';
+  const rowsA = subtopicBreakdown(distA);
+  const rowsB = distB ? subtopicBreakdown(distB) : null;
+  const lookupB = new Map((rowsB || []).map((row) => [row.subtopic, row]));
+
+  const table = document.createElement('table');
+  table.className = 'grouped';
+  // Compare view puts A and B in one cell rather than in four columns: this
+  // table lives in the summary rail, and six columns there either clip the
+  // last one or push the reader into a horizontal scroll to see the number
+  // they are comparing against.
+  const pooledTitle = `Share of this category's ${noun} reached by at least one repetition`;
+  const perPredTitle = `Share of this category's ${noun} a single repetition reaches on average`;
+  const heads = distB
+    ? `<th scope="col"><abbr title="${pooledTitle}">Pooled <small>A / B</small></abbr></th>
+       <th scope="col"><abbr title="${perPredTitle}">Per pred. <small>A / B</small></abbr></th>`
+    : `<th scope="col"><abbr title="${pooledTitle}">Pooled</abbr></th>
+       <th scope="col"><abbr title="${perPredTitle}">Per prediction</abbr></th>`;
+  table.innerHTML = `<caption>${noun[0].toUpperCase()}${noun.slice(1)} in the reference, by category</caption>
+    <thead><tr>
+      <th scope="col">Category</th>
+      <th scope="col"><abbr title="Reference ${noun} carrying this label">In ref.</abbr></th>
+      ${heads}
+    </tr></thead>`;
+
+  const body = document.createElement('tbody');
+  for (const row of rowsA) {
+    const slot = row[mode];
+    const other = lookupB.get(row.subtopic);
+    const tr = document.createElement('tr');
+    // No reference items in this category is not a coverage of zero: the run
+    // cannot reach what the reference does not contain. Same distinction the
+    // hatched cells make in the subtopic figure.
+    const pair = (pick) => `${PERCENT(pick(slot))} <small>/ ${
+      other ? PERCENT(pick(other[mode])) : '—'}</small>`;
+    const cells = slot.total === 0
+      ? `<td colspan="2" class="muted">no ${noun} in the reference</td>`
+      : distB
+        ? `<td>${pair((s) => s.pooled)}</td><td>${pair((s) => s.perPrediction)}</td>`
+        : `<td>${PERCENT(slot.pooled)} <small>(${COUNT(slot.hit)}/${COUNT(slot.total)})</small></td>
+           <td>${PERCENT(slot.perPrediction)}</td>`;
+    tr.innerHTML = `<th scope="row">${escapeHtml(row.subtopic)}</th>
+      <td>${COUNT(slot.total)}</td>${cells}`;
+    body.append(tr);
+  }
+  table.append(body);
+  // In compare view this is six columns inside the narrow summary rail, so it
+  // scrolls in its own box rather than pushing the rail wider or clipping the
+  // last column off the edge.
+  const scroll = document.createElement('div');
+  scroll.className = 'table-scroll';
+  scroll.append(table);
+  details.append(scroll);
+
+  const note = document.createElement('p');
+  note.className = 'note';
+  note.textContent = 'Categories are the subtopic panel\u2019s labels on the '
+    + 'reference itself, so they are the same for every distribution and only '
+    + 'the coverage differs. Coverage is the only headline metric that splits '
+    + 'this way \u2014 alignment and redundancy are computed per repetition '
+    + 'over a whole schema and have no per-category value. Switch between '
+    + 'concepts and edges with the Nodes / Edges control.';
+  details.append(note);
+  return details;
 }
 
 // ---------------------------------------------------------------------------

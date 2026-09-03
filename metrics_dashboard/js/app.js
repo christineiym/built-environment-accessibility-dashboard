@@ -16,6 +16,9 @@ const $ = (id) => document.getElementById(id);
 
 const state = {
   view: 'single',
+  // Per side, the condition the user asked for when that cell was never run.
+  // Null when the displayed selection is the one that was chosen.
+  substituted: { a: null, b: null },
   mode: 'nodes',
   a: null,
   b: null,
@@ -92,6 +95,7 @@ function selectField(id, label, options, value, onChange) {
     element.value = option.value;
     element.textContent = option.label;
     if (option.disabled) element.disabled = true;
+    if (option.disabled) element.disabled = true;
     select.append(element);
   }
   select.value = value;
@@ -100,10 +104,30 @@ function selectField(id, label, options, value, onChange) {
   return wrap;
 }
 
-function axisOptions(kind) {
+/**
+ * Options for one axis, marking the ones that name no run.
+ *
+ * `sel` is the selection the picker sits in, so a condition is judged against
+ * the model actually chosen: `grounded_manual` exists for gpt and for nobody
+ * else, and an option list that ignored the model would offer it for all four.
+ * An unavailable option is labelled and disabled rather than hidden, because
+ * "gemini was never run grounded on manual_v0" is a fact about the study worth
+ * seeing in the picker.
+ */
+function axisOptions(kind, sel) {
   const meta = data.DATA.meta;
   const list = kind === 'useCase' ? meta.useCases : kind === 'model' ? meta.models : meta.conditions;
-  const options = list.map((entry) => ({ value: entry.id, label: entry.label }));
+  const options = list.map((entry) => {
+    const candidate = kind === 'useCase' ? { ...sel, u: entry.id }
+      : kind === 'model' ? { ...sel, m: entry.id }
+      : { ...sel, c: entry.id };
+    const runs = data.exists(candidate);
+    return {
+      value: entry.id,
+      label: runs ? entry.label : `${entry.label} — not run`,
+      disabled: !runs,
+    };
+  });
   if (kind !== 'useCase') {
     options.push({ value: data.ALL, label: kind === 'model' ? 'All models (combined)' : 'All conditions (combined)' });
   }
@@ -114,11 +138,11 @@ function buildPickers() {
   for (const side of ['a', 'b']) {
     const host = $(side === 'a' ? 'pickerA' : 'pickerB');
     host.replaceChildren(
-      selectField(`${side}UseCase`, 'Use case', axisOptions('useCase'), state[side].u,
+      selectField(`${side}UseCase`, 'Use case', axisOptions('useCase', state[side]), state[side].u,
         (value) => setSelection(side, { ...state[side], u: value })),
-      selectField(`${side}Model`, 'Model', axisOptions('model'), state[side].m,
+      selectField(`${side}Model`, 'Model', axisOptions('model', state[side]), state[side].m,
         (value) => setSelection(side, { ...state[side], m: value })),
-      selectField(`${side}Condition`, 'Grounding condition', axisOptions('condition'), state[side].c,
+      selectField(`${side}Condition`, 'Grounding condition', axisOptions('condition', state[side]), state[side].c,
         (value) => setSelection(side, { ...state[side], c: value })),
     );
   }
@@ -126,27 +150,58 @@ function buildPickers() {
 }
 
 function setSelection(side, sel) {
+  // The cell exists in the grid but was never run -- gemini has no
+  // grounded_manual arm, the local models have no grounded arm. Fall back to a
+  // union that does exist rather than showing an empty chart with no
+  // explanation, but *say so*: the picker is rebuilt below so it displays what
+  // is actually on screen, and the note names the substitution. Silently
+  // swapping the condition while the dropdown still read "Grounded
+  // (manual_v0)" made a union over every condition look like one condition's
+  // result.
+  state.substituted[side] = null;
   if (!data.exists(sel)) {
-    // The cell exists in the grid but was never run; fall back to a union that
-    // does, rather than showing an empty chart with no explanation.
-    sel = { ...sel, c: data.ALL };
+    const wanted = sel.c;
+    const fallback = { ...sel, c: data.ALL };
+    if (data.exists(fallback)) {
+      state.substituted[side] = wanted;
+      sel = fallback;
+    }
   }
   state[side] = sel;
   state.selection = null;
   state.aligned = false;
   barCharts().forEach((chart) => chart.resetPaging());
-  refreshPairNote();
+  buildPickers();
   update();
+}
+
+function substitutionNote() {
+  const parts = [];
+  for (const side of ['a', 'b']) {
+    const wanted = state.substituted[side];
+    if (!wanted) continue;
+    parts.push(
+      `${side.toUpperCase()}: ${data.labelOf('model', state[side].m)} was never run `
+      + `${data.labelOf('condition', wanted)}, so all conditions combined are shown instead.`
+    );
+  }
+  return parts.join(' ');
 }
 
 function refreshPairNote() {
   const note = $('pairNote');
-  if (state.view !== 'compare') { note.textContent = ''; return; }
+  const swapped = substitutionNote();
+  if (state.view !== 'compare') {
+    note.textContent = swapped;
+    note.dataset.bad = swapped ? 'yes' : 'no';
+    return;
+  }
   const verdict = data.validPair(state.a, state.b);
-  note.textContent = verdict.ok
+  const base = verdict.ok
     ? (verdict.why || 'Valid pairing under comparison.tex.')
     : `Not a valid pairing: ${verdict.why}`;
-  note.dataset.bad = verdict.ok ? 'no' : 'yes';
+  note.textContent = swapped ? `${swapped} ${base}` : base;
+  note.dataset.bad = verdict.ok && !swapped ? 'no' : 'yes';
 }
 
 function buildMenus() {
@@ -192,6 +247,29 @@ function buildMenus() {
     tones.append(option);
   }
   tones.value = 'G3';
+
+  // One accessibility category at a time, appended to the scope select rather
+  // than given a control of its own: both restrict which part of the reference
+  // is on screen, and two independent restrictions would let the page show
+  // "Tactile, record-keeping removed", which is a filter nothing in the report
+  // uses and which reads as a fourth condition.
+  const scope = $('scopeSel');
+  for (const option of [...scope.querySelectorAll('optgroup')]) option.remove();
+  const group = document.createElement('optgroup');
+  group.label = 'One accessibility category';
+  for (const topic of data.DATA.meta.subtopics) {
+    const option = document.createElement('option');
+    option.value = `topic:${topic}`;
+    option.textContent = topic;
+    group.append(option);
+  }
+  scope.append(group);
+  scope.value = state.scope;
+}
+
+/** The category the scope select is restricted to, or null. */
+function scopeTopic() {
+  return state.scope.startsWith('topic:') ? state.scope.slice(6) : null;
 }
 
 function toggleGroup(buttons, active) {
@@ -361,7 +439,9 @@ function readHash() {
   state.view = pick('view', ['single', 'compare'], state.view);
   state.mode = pick('mode', ['network', 'nodes', 'edges'], state.mode);
   state.colorBy = pick('color', ['value', 'branch', 'subtopic'], state.colorBy);
-  state.scope = pick('scope', ['all', 'accessibility'], state.scope);
+  const scopes = ['all', 'accessibility',
+                  ...data.DATA.meta.subtopics.map((topic) => `topic:${topic}`)];
+  state.scope = pick('scope', scopes, state.scope);
   state.orientation = params.get('orient') === 'v' ? 'v' : 'h';
   state.overlay = params.get('overlay') === '1';
   state.order = pick('order', ['own', 'a', 'b'], 'own');
@@ -383,6 +463,8 @@ function filtered(rows) {
   const needle = state.search.toLowerCase();
   return rows.filter((row) => {
     if (state.scope === 'accessibility' && row.meta) return false;
+    const topic = scopeTopic();
+    if (topic && row.subtopic !== topic) return false;
     if (!state.showUnmatched && row.hits === 0) return false;
     if (needle && !row.name.toLowerCase().includes(needle)) return false;
     return true;
@@ -392,17 +474,16 @@ function filtered(rows) {
 /**
  * Ranking comparator for the metric in force: highest first, unmeasured last.
  *
- * Rubric metrics tie constantly — an edge whose single scored concept the panel
- * called operational reads 100%, the same as one with eight — so the
- * better-evidenced item wins the tie, and the count is printed beside the value
- * so it is never mistaken for strength.
+ * Rubric metrics tie often, and now necessarily: every edge that shares a child
+ * concept carries that concept's score exactly. Prevalence breaks those ties,
+ * so a run's most-reached measurable concepts rise to the top of an O ranking
+ * rather than an arbitrary alphabetical slice of them.
  *
  * @param {(subject: any) => object|null} rowOf Pulls the row to rank on. It is
  *   a lookup rather than the subject itself so one chart can be ranked on
  *   another distribution's values.
  */
 function byMetric(rowOf) {
-  const sampled = data.isSampled(state.sort);
   return (x, y) => {
     const rx = rowOf(x);
     const ry = rowOf(y);
@@ -414,7 +495,6 @@ function byMetric(rowOf) {
     if (a == null) return 1;
     if (b == null) return -1;
     if (a !== b) return b - a;
-    if (sampled && rx.opTerms !== ry.opTerms) return ry.opTerms - rx.opTerms;
     return ry.prevalence - rx.prevalence || nx.localeCompare(ny);
   };
 }
@@ -475,8 +555,6 @@ function itemsFor(dist, rowsB, order = null) {
       fractionB: valueB == null ? null : valueB / spec.max,
       textA: data.formatValue(valueA, state.sort),
       textB: data.formatValue(valueB, state.sort),
-      sampleA: data.isSampled(state.sort) ? row.opTerms : null,
-      sampleB: data.isSampled(state.sort) && partner ? partner.opTerms : null,
       delta: valueA == null || valueB == null ? null : valueB - valueA,
       deltaText: valueA == null || valueB == null ? null
         : formatDelta(valueB - valueA, spec),
@@ -496,11 +574,13 @@ function formatDelta(delta, spec) {
 
 function captionFor(dist, count, spec) {
   const kind = state.mode === 'edges' ? 'reference edges' : 'reference concepts';
-  const scope = state.scope === 'accessibility' ? ', record-keeping edges removed' : '';
+  const topic = scopeTopic();
+  const scope = topic ? `, restricted to ${topic}`
+    : state.scope === 'accessibility' ? ', record-keeping edges removed' : '';
   return `${count} ${kind} ranked by ${spec.phrase}, over ${dist.reps} repetitions${scope}. `
     + (state.showUnmatched ? 'Never-matched items are included at zero. ' : 'Never-matched items are hidden. ')
     + (data.isSampled(spec.id)
-      ? 'The count after each value is how many matched concepts the rubric panel scored; ties break toward the better-evidenced item, and an item with none is shown as a dash.'
+      ? 'Rubric values are the reference concept\u2019s own score, identical in every distribution, so the ranking is of the reference and the bars say who reached it. A concept the panel did not score is shown as a dash.'
       : '');
 }
 
@@ -662,7 +742,7 @@ function renderNetworks(stage, distA, distB) {
     caption: `Node size and shade follow ${spec.label.replace('— ', '').toLowerCase()}; `
       + `edge thickness follows how often that reference edge was matched, over ${dist.reps} repetitions.`
       + (data.isSampled(spec.id)
-        ? ' Concepts the rubric panel never sampled carry no value and are drawn at minimum size.' : ''),
+        ? ' Concepts the rubric panel did not score carry no value and are drawn at minimum size.' : ''),
     metricLabel: spec.label.replace('— ', ''),
     colorBy: state.colorBy,
     useCase: dist.useCase,
