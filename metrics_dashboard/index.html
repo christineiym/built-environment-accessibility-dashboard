@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Schema Match Distribution Explorer</title>
+<meta name="description" content="Probe how generated taxonomies match the reference case taxonomies, by use case, model and grounding condition.">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='2' y='9' width='3' height='5' fill='%232a78d6'/><rect x='6.5' y='5' width='3' height='9' fill='%232a78d6'/><rect x='11' y='2' width='3' height='12' fill='%23eb6834'/></svg>">
+</head>
+<body>
+
+<a class="skip-link" href="#stage">Skip to the chart</a>
+
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <h1>Schema Match Distribution Explorer</h1>
+      <p id="brandSub">Loading&hellip;</p>
+    </div>
+    <div class="topbar-controls">
+      <div class="segmented" role="group" aria-label="View">
+        <button type="button" id="viewSingle" aria-pressed="true">Single</button>
+        <button type="button" id="viewCompare" aria-pressed="false">Compare</button>
+      </div>
+      <div class="segmented" role="group" aria-label="Mode">
+        <button type="button" id="modeNetwork" aria-pressed="false">Network</button>
+        <button type="button" id="modeNodes" aria-pressed="true">Nodes</button>
+        <button type="button" id="modeEdges" aria-pressed="false">Edges</button>
+      </div>
+      <button type="button" class="ghost-btn" id="themeBtn">Theme</button>
+    </div>
+  </header>
+
+  <div class="layout">
+
+    <!-- ================= left rail: what to show ================= -->
+    <aside class="panel panel--controls" id="panelControls" aria-label="Controls">
+      <div class="panel-scroll">
+
+        <section class="block">
+          <h2 class="block-title"><span class="swatch swatch--a" aria-hidden="true"></span> Distribution A</h2>
+          <div class="picker" id="pickerA"></div>
+        </section>
+
+        <section class="block" id="blockB" hidden>
+          <h2 class="block-title"><span class="swatch swatch--b" aria-hidden="true"></span> Distribution B</h2>
+          <div class="picker" id="pickerB"></div>
+          <p class="note" id="pairNote"></p>
+        </section>
+
+        <section class="block">
+          <h2 class="block-title">Display</h2>
+
+          <label class="field" for="sortBy">
+            <span class="field-label">Sort and size by</span>
+            <select id="sortBy"></select>
+          </label>
+
+          <label class="field" for="colorBy">
+            <span class="field-label">Colour by</span>
+            <select id="colorBy">
+              <option value="value">Value (sequential)</option>
+              <option value="branch">Top branch</option>
+              <option value="subtopic">Accessibility category</option>
+            </select>
+          </label>
+
+          <label class="field" for="scopeSel">
+            <span class="field-label">Reference edges</span>
+            <select id="scopeSel">
+              <option value="all">All edges</option>
+              <option value="accessibility">Accessibility only (drop record-keeping)</option>
+            </select>
+          </label>
+
+          <div class="field field--bars">
+            <span class="field-label" id="orientLabel">Bar orientation</span>
+            <div class="segmented" role="group" aria-labelledby="orientLabel">
+              <button type="button" id="orientH" aria-pressed="true">Horizontal</button>
+              <button type="button" id="orientV" aria-pressed="false">Vertical</button>
+            </div>
+          </div>
+
+          <label class="field field--compare" for="rowOrder" hidden>
+            <span class="field-label">Row order</span>
+            <select id="rowOrder">
+              <option value="own">Each by its own value</option>
+              <option value="a">Both by A&rsquo;s value</option>
+              <option value="b">Both by B&rsquo;s value</option>
+            </select>
+          </label>
+
+          <div class="field field--compare" hidden>
+            <span class="field-label" id="layoutLabel">Comparison layout</span>
+            <div class="segmented" role="group" aria-labelledby="layoutLabel">
+              <button type="button" id="cmpSeparate" aria-pressed="true">Separate</button>
+              <button type="button" id="cmpOverlay" aria-pressed="false">Overlay</button>
+            </div>
+          </div>
+
+          <label class="check">
+            <input type="checkbox" id="showUnmatched">
+            <span>Include never-matched items (prevalence&nbsp;0)</span>
+          </label>
+
+          <label class="field" for="search">
+            <span class="field-label">Filter by name</span>
+            <input type="search" id="search" placeholder="e.g. tactile" autocomplete="off">
+          </label>
+        </section>
+
+        <section class="block">
+          <h2 class="block-title">Sonification</h2>
+          <p class="note">Plays a tone for the item under the pointer or the keyboard cursor. Pitch rises three octaves with the bar&rsquo;s height, on one scale shared by both distributions &mdash; so the interval between the two voices is the difference between them, and unison means they agree. When two distributions are shown, A is panned left and B right. Picking an instrument or a starting tone plays a sample of it.</p>
+
+          <label class="check">
+            <input type="checkbox" id="soundOn">
+            <span>Play a tone per item</span>
+          </label>
+
+          <label class="field field--compare" for="voices" hidden>
+            <span class="field-label">Voices</span>
+            <select id="voices">
+              <option value="both">Both distributions</option>
+              <option value="a">A only</option>
+              <option value="b">B only</option>
+            </select>
+          </label>
+
+          <label class="field" for="instA">
+            <span class="field-label">Instrument &mdash; A (left)</span>
+            <select id="instA"></select>
+          </label>
+
+          <label class="field field--compare" for="instB" hidden>
+            <span class="field-label">Instrument &mdash; B (right)</span>
+            <select id="instB"></select>
+          </label>
+
+          <label class="field" for="pitchScale">
+            <span class="field-label">Pitch steps</span>
+            <select id="pitchScale"></select>
+          </label>
+
+          <label class="field" for="toneScale">
+            <span class="field-label">Pitch is measured against</span>
+            <select id="toneScale">
+              <option value="absolute">A full bar (100%, or 5 of 5)</option>
+              <option value="relative">The tallest bar on screen</option>
+            </select>
+          </label>
+
+          <label class="field" for="baseTone">
+            <span class="field-label">Starting tone (lowest bar)</span>
+            <select id="baseTone"></select>
+          </label>
+
+          <button type="button" class="ghost-btn" id="soundTest">Preview low &rarr; high</button>
+        </section>
+
+      </div>
+    </aside>
+
+    <!-- ================= centre: the distribution ================= -->
+    <main class="stage" id="stage" tabindex="-1">
+      <div class="stage-scroll" id="stageScroll"></div>
+    </main>
+
+    <!-- ================= right rail: summary statistics ================= -->
+    <aside class="panel panel--summary" id="panelSummary" aria-label="Summary statistics">
+      <div class="panel-scroll" id="summaryScroll"></div>
+    </aside>
+
+  </div>
+
+  <nav class="tabbar" aria-label="Sections">
+    <button type="button" id="tabControls" aria-pressed="false">Controls</button>
+    <button type="button" id="tabStage" aria-pressed="true">Chart</button>
+    <button type="button" id="tabSummary" aria-pressed="false">Stats</button>
+  </nav>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,253 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Self-test — Schema Match Distribution Explorer</title>
+<!--
+  Assertions over the parts of this dashboard that a screenshot cannot check:
+  the keyboard model, the comparison rules from comparison.tex, and the Align
+  button's coordinate handover. Serve the folder and open this file; each line
+  reads PASS or FAIL. It runs the real page in an iframe, so it exercises the
+  shipped code rather than a copy of it.
+-->
+<body style="margin:0;font:13px system-ui">
+<h1 style="font:600 15px system-ui;padding:8px">Self-test</h1>
+<iframe id="f" src="index.html" style="width:1280px;height:760px;border:1px solid #ccc"></iframe>
+<pre id="out" style="font:11px monospace"></pre>
+<script>
+const log = [];
+const say = (ok, msg) => { log.push((ok ? "PASS " : "FAIL ") + msg); };
+const sayF = say;
+const f = document.getElementById('f');
+const wait = (ms) => new Promise(r => setTimeout(r, ms));
+
+function key(el, k) {
+  el.dispatchEvent(new f.contentWindow.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+}
+
+async function go(hash) {
+  f.contentWindow.location.hash = hash;
+  await wait(600);
+  return f.contentDocument;
+}
+
+const flush = () => { document.getElementById('out').textContent = log.join('\n'); };
+(async () => {
+ try {
+  window.onerror = (m) => log.push('ERROR ' + m);
+  f.contentWindow.addEventListener('error', (e) => log.push('IFRAME ERROR ' + e.message + '\n   ' + ((e.error && e.error.stack) || '').split('\n').slice(0,4).join('\n   ')));
+  await wait(1500);
+
+  // --- horizontal bars: Enter in, arrows, Escape out ---------------------
+  let d = await go('#view=single&mode=nodes&a=osm_pwg|gpt|ungrounded&color=subtopic');
+  const list = d.querySelector('.bars');
+  sayF(!!list, 'bar list rendered');
+  sayF(list.getAttribute('role') === 'listbox' && list.tabIndex === 0, 'list is one tab stop with role=listbox');
+  list.focus();
+  sayF(d.activeElement === list, 'list takes focus');
+  key(list, 'Enter');
+  sayF(d.activeElement.classList.contains('bar'), 'Enter enters the group: ' + d.activeElement.getAttribute('aria-label'));
+  const first = d.activeElement;
+  key(first, 'ArrowDown');
+  sayF(d.activeElement !== first && d.activeElement.classList.contains('bar'), 'ArrowDown moves to ' + d.activeElement.querySelector('.bar-word').textContent);
+  key(d.activeElement, 'End');
+  sayF(d.activeElement.dataset.index === String(d.querySelectorAll('.bar').length - 1), 'End jumps to the last bar');
+  key(d.activeElement, 'Escape');
+  sayF(d.activeElement === list, 'Escape leaves the group');
+
+  // selection updates the summary rail
+  key(list, 'Enter');
+  key(d.activeElement, 'Enter');
+  await wait(200);
+  const card = d.querySelector('.card--selection');
+  sayF(!!card, 'Enter on a bar opens the selection card: ' + (card && card.querySelector('h2').textContent));
+  sayF(!!card && /Operationality/.test(card.textContent), 'selection card carries the rubric rows');
+
+  // --- vertical orientation uses left/right ------------------------------
+  d = await go('#view=single&mode=nodes&a=osm_pwg|gpt|ungrounded&orient=v');
+  const vlist = d.querySelector('.bars--v');
+  sayF(!!vlist, 'vertical bars rendered');
+  vlist.focus(); key(vlist, 'Enter');
+  key(d.activeElement, 'Home');
+  const v0 = d.activeElement;
+  key(v0, 'ArrowRight');
+  sayF(d.activeElement !== v0, 'ArrowRight moves in vertical orientation');
+
+  // --- overlay ------------------------------------------------------------
+  d = await go('#view=compare&mode=nodes&a=osm_pwg|gpt|ungrounded&b=osm_pwg|gpt|grounded&overlay=1');
+  sayF(d.querySelectorAll('.bar-fill--b').length > 0, 'overlay draws a second fill per bar');
+  const lbl = d.querySelector('.bar').getAttribute('aria-label');
+  sayF(/A .*, B /.test(lbl), 'overlay bar names both values: ' + lbl);
+
+  // a value B never measured must not draw as a full bar
+  d = await go('#view=compare&mode=nodes&a=osm_pwg|gpt|ungrounded&b=osm_pwg|gpt|grounded&overlay=1');
+  const zeroB = [...d.querySelectorAll('.bar')].filter(b => /→ 0%/.test(b.querySelector('.bar-val').textContent));
+  say(zeroB.length > 0, 'an item B never reached reads as the 0% it measured, not a blank ('
+      + zeroB.length + ' of them)');
+  d = await go('#view=compare&mode=edges&a=osm_pwg|gpt|ungrounded&b=osm_pwg|gpt|grounded&overlay=1&sort=O');
+  const missing = [...d.querySelectorAll('.bar')].filter(b => /→ —/.test(b.querySelector('.bar-val').textContent));
+  say(missing.length > 0, 'a dash is now reserved for an unscored rubric value (' + missing.length + ')');
+  say(missing.every(b => !b.querySelector('.bar-fill--b')), 'an unscored B value draws no B bar at all');
+  say(missing.every(b => /not measured in B/.test(b.getAttribute('aria-label'))),
+      'and says so in its name rather than only in colour');
+
+  // --- shared row order ----------------------------------------------------
+  const names = (doc, i) => [...doc.querySelectorAll('.chart')[i].querySelectorAll('.bar-word')]
+    .map(e => e.textContent);
+  d = await go('#view=compare&mode=nodes&a=osm_pwg|gpt|ungrounded&b=osm_pwg|gemini|grounded');
+  const ownA = names(d, 0); const ownB = names(d, 1);
+  say(JSON.stringify(ownA) !== JSON.stringify(ownB), 'ranked separately the two charts disagree on order');
+
+  d = await go('#view=compare&mode=nodes&a=osm_pwg|gpt|ungrounded&b=osm_pwg|gemini|grounded&order=a');
+  const alignedA = names(d, 0); const alignedB = names(d, 1);
+  say(JSON.stringify(alignedA) === JSON.stringify(alignedB),
+      'ordered by A both charts hold the same items in the same rows (' + alignedA.length + ')');
+  say(JSON.stringify(alignedA) === JSON.stringify(ownA), 'and A keeps its own ranking');
+  say(alignedA.length >= Math.max(ownA.length, ownB.length),
+      'the shared set is the union, so nothing either reached is dropped');
+
+  d = await go('#view=compare&mode=nodes&a=osm_pwg|gpt|ungrounded&b=osm_pwg|gemini|grounded&order=b');
+  const byB = names(d, 1);
+  say(JSON.stringify(names(d, 0)) === JSON.stringify(byB), 'ordered by B they still line up');
+  say(JSON.stringify(byB) !== JSON.stringify(alignedB), 'and B’s order is not A’s');
+  say(/ranked by/.test(d.querySelector('.chart figcaption').textContent),
+      'each caption says which distribution the ranking came from');
+  const listLabel = d.querySelector('.bars').getAttribute('aria-label');
+  say(/in .* order/.test(listLabel), 'and so does the group’s accessible name');
+  d = await go('#view=single&mode=edges&a=gatis|gemini|ungrounded&sort=O');
+  const unscored = [...d.querySelectorAll('.bar')].filter(b => b.querySelector('.bar-track[data-missing]'));
+  say(unscored.length > 0 && unscored.every(b => !b.querySelector('.bar-fill')),
+      'an unscored item draws a hatched empty track, not a bar (' + unscored.length + ' of them)');
+
+  // --- invalid pairing is refused ----------------------------------------
+  d = await go('#view=compare&mode=nodes&a=osm_pwg|gpt|all&b=gatis|gemini|all');
+  sayF(!!d.querySelector('.banner'), 'cross-use-case partial union is refused: ' + (d.querySelector('.banner')||{}).textContent);
+
+  // --- network: enter, move, escape, align --------------------------------
+  d = await go('#view=compare&mode=network&a=osm_pwg|gpt|ungrounded&b=osm_pwg|gpt|grounded');
+  const svgs = d.querySelectorAll('.chart--network svg');
+  sayF(svgs.length === 2, 'two networks side by side');
+  svgs[0].focus(); key(svgs[0], 'Enter');
+  sayF(d.activeElement.classList.contains('node'), 'Enter enters the network: ' + d.activeElement.getAttribute('aria-label'));
+  key(d.activeElement, 'ArrowDown');
+  sayF(d.activeElement.classList.contains('node'), 'arrow keys walk the concepts');
+  key(d.activeElement, 'Escape');
+  sayF(d.activeElement === svgs[0], 'Escape leaves the network');
+
+  const posOf = (svg) => [...svg.querySelectorAll('g.node')].reduce((m, g) => {
+    m[g.dataset.index] = g.getAttribute('transform'); return m;
+  }, {});
+  const before = JSON.stringify(posOf(d.querySelectorAll('.chart--network svg')[1]));
+  d.getElementById('alignBtn').click();
+  await wait(700);
+  const svgs2 = d.querySelectorAll('.chart--network svg');
+  const a = posOf(svgs2[0]); const b = posOf(svgs2[1]);
+  const shared = Object.keys(b).filter(k => k in a);
+  const only = Object.keys(b).filter(k => !(k in a));
+  const same = shared.length > 0 && shared.every(k => a[k] === b[k]);
+  say(true, 'align: ' + shared.length + ' shared concepts, ' + only.length + ' only in B');
+  sayF(same, 'Align places B on A’s coordinates');
+  sayF(before !== JSON.stringify(b), 'aligning actually moved B');
+  sayF(d.getElementById('alignBtn').getAttribute('aria-pressed') === 'true', 'Align reports its state with aria-pressed');
+
+  // --- gatis edges, sorting by a rubric dimension -------------------------
+  d = await go('#view=single&mode=edges&a=gatis|all|all&sort=E_collectible');
+  const vals = [...d.querySelectorAll('.bar-val')].map(e => parseFloat(e.textContent));
+  sayF(vals.length > 0 && vals.every((v, i) => i === 0 || vals[i-1] >= v), 'sorting by a rubric dimension is monotone, ' + vals.length + ' rows');
+  sayF(d.querySelector('.table-fallback table caption').textContent.length > 20, 'every chart ships a data table');
+
+  // --- sonification: the pair really is two voices -------------------------
+  const { Sonifier } = await import('./js/sonify.js');
+  const son = new Sonifier();
+  son.enabled = true;
+  son.baseHz = 196;
+
+  const span = son.frequency(1) / son.frequency(0);
+  say(Math.abs(span - 8) < 1e-6, 'pitch spans three octaves (' + span.toFixed(2) + 'x base)');
+  say(son.frequency(0.5) > son.frequency(0.47), 'a 3-point difference is an audible step: '
+      + (son.frequency(0.5) - son.frequency(0.47)).toFixed(1) + ' Hz at mid-scale');
+  say(son.instruments.a !== son.instruments.b,
+      'the two series default to different instruments: ' + son.instruments.a + ' / ' + son.instruments.b);
+
+  // Render offline so the assertions run without an output device.
+  const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  son.context = new Offline(2, 44100, 44100);
+  son.master = son.context.createGain();
+  son.master.connect(son.context.destination);
+
+  son.stereo = true;
+  const pair = son.playPair(0.5, 0.5);
+  say(pair.length === 2, 'a unison still schedules two voices, not one');
+  say(pair[0].hz === pair[1].hz, 'both voices sit on the same absolute scale (' + pair[0].hz.toFixed(1) + ' Hz)');
+  say(pair[0].instrument !== pair[1].instrument, 'they differ by timbre');
+  say(pair[1].start > pair[0].start && (pair[1].start - pair[0].start) < 0.05,
+      'B is nudged ' + Math.round((pair[1].start - pair[0].start) * 1000) + 'ms late — separate attacks, still one event');
+  say(pair[0].panned && pair[1].panned, 'both are panned apart while a pair is sounding');
+
+  const rendered = await son.context.startRendering();
+  const left = rendered.getChannelData(0);
+  const right = rendered.getChannelData(1);
+  const energy = (buf) => { let t = 0; for (let i = 0; i < buf.length; i += 1) t += buf[i] * buf[i]; return t; };
+  const [eL, eR] = [energy(left), energy(right)];
+  const ratio = Math.max(eL, eR) / Math.max(1e-9, Math.min(eL, eR));
+  say(eL > 1e-6 && eR > 1e-6, 'both channels carry signal (L ' + eL.toFixed(2) + ', R ' + eR.toFixed(2) + ')');
+  say(ratio < 3, 'the two voices are within ' + ratio.toFixed(1) + 'x of each other — neither is buried');
+  let differs = 0;
+  for (let i = 0; i < left.length; i += 1) if (Math.abs(left[i] - right[i]) > 1e-4) differs += 1;
+  say(differs > left.length * 0.1,
+      'the channels are not the same waveform — ' + Math.round(100 * differs / left.length) + '% of samples differ');
+
+  // voice selection
+  son.voices = 'a';
+  say(son.playPair(0.5, 0.5).length === 1 && son.playPair(0.5, 0.5)[0].series === 'a',
+      'voices = A only sounds one voice, A');
+  son.voices = 'b';
+  const onlyB = son.playPair(0.5, 0.5);
+  say(onlyB.length === 1 && onlyB[0].series === 'b', 'voices = B only sounds one voice, B');
+  son.voices = 'both';
+  say(son.playPair(0.5, 0.5).length === 2, 'voices = both is back to two');
+
+  // an instrument demo sounds even while per-item tones are off
+  son.enabled = false;
+  const demo = son.demo('b');
+  say(demo.length === 3, 'picking an instrument plays a three-note sample');
+  say(demo.every((v) => v.instrument === son.instruments.b), 'the sample uses the instrument just picked');
+  say(demo[1].start > demo[0].start && demo[2].start > demo[1].start, 'the sample rises through three notes');
+  say(son.enabled === false, 'the sample does not leave per-item tones switched on');
+  son.enabled = true;
+
+  // pitch grids
+  const sweep = (scale) => {
+    son.scale = scale;
+    const seen = new Set();
+    for (let i = 0; i <= 2000; i += 1) seen.add(son.frequency(i / 2000).toFixed(4));
+    return seen.size;
+  };
+  say(sweep('continuous') > 1500, 'continuous pitch is continuous (' + sweep('continuous') + ' distinct)');
+  say(sweep('chromatic') === 37, 'chromatic snaps to 37 semitones over three octaves');
+  say(sweep('pentatonic') === 16, 'pentatonic snaps to 16 degrees over three octaves');
+  son.scale = 'pentatonic';
+  const degrees = new Set();
+  for (let i = 0; i <= 2000; i += 1) {
+    const semis = Math.round(12 * Math.log2(son.frequency(i / 2000) / son.baseHz));
+    degrees.add(((semis % 12) + 12) % 12);
+  }
+  say([...degrees].every((d) => [0, 2, 4, 7, 9].includes(d)),
+      'every pentatonic pitch is a scale degree: ' + [...degrees].sort((a, b) => a - b).join(', '));
+  son.scale = 'continuous';
+
+  // A lone distribution belongs in the middle.
+  son.context = new Offline(2, 44100, 22050);
+  son.master = son.context.createGain();
+  son.master.connect(son.context.destination);
+  son.buses = new Map();
+  son.stereo = false;
+  const solo = son.play(0.5, 'a');
+  say(!solo.panned, 'a single distribution is not panned');
+
+  // --- no live regions ----------------------------------------------------
+  sayF(d.querySelectorAll('[aria-live]').length === 0, 'no aria-live regions in the page');
+
+ } catch (err) { log.push('THREW ' + (err && err.stack || err)); }
+  flush();
+})();
+setInterval(flush, 300);
+</script>
